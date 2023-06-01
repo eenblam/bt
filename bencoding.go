@@ -135,23 +135,18 @@ func ParseInt(bs []byte) Result {
 
 // Parse iINTe
 func ParseInteger(bs []byte) Result {
-	rest := bs
-	if len(rest) == 0 {
-		return Result{Rest: bs, Error: ErrorEmpty()}
+	rest, err := delim('i', bs)
+	if err != nil {
+		return Result{Rest: bs, Error: err}
 	}
-	if rest[0] != 'i' {
-		return Result{Rest: bs, Error: fmt.Errorf("expected i, got %s", string(rest[0]))}
-	}
-	rest = rest[1:]
 	r := ParseInt(rest)
 	if r.Error != nil {
 		return Result{Rest: bs, Error: r.Error}
 	}
-	rest = r.Rest
-	if rest[0] != 'e' {
-		return Result{Rest: bs, Error: fmt.Errorf("expected e, got %s", string(rest[0]))}
+	rest, err = delim('e', r.Rest)
+	if err != nil {
+		return Result{Rest: bs, Error: err}
 	}
-	rest = rest[1:]
 	return Result{Value: r.Value, Rest: rest}
 }
 
