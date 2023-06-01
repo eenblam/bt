@@ -218,6 +218,55 @@ func ParseString(bs []byte) Result {
 	return Result{Value: BString(rest[:length]), Rest: rest[length:]}
 }
 
+func ParseList(bs []byte) Result {
+	// Parse l
+	rest, err := delim('l', bs)
+	if err != nil {
+		return Result{Rest: bs, Error: err}
+	}
+	// Parse e (end) or value
+	results := []Value{}
+	for len(rest) > 0 {
+		switch rest[0] {
+		case 'e':
+			// Create BList, trim e from rest, return.
+			return Result{Value: BList(results), Rest: rest[1:]}
+		default:
+			// Parse a term
+			next := Term(rest)
+			if next.Error != nil {
+				return Result{Rest: bs, Error: next.Error}
+			}
+			results = append(results, next.Value)
+			rest = next.Rest
+		}
+	}
+	return Result{Rest: bs, Error: errors.New("received incomplete list")}
+}
+
+func ParseDict(bs []byte) Result {
+	//TODO
+	return Result{}
+}
+
+func Term(bs []byte) Result {
+	if len(bs) == 0 {
+		return Result{Rest: bs, Error: ErrorEmpty()}
+	}
+	switch bs[0] {
+	case 'i': // integer
+		return ParseInteger(bs)
+	case 'l': // list
+		return ParseList(bs)
+	case 'd': // dict
+		return ParseDict(bs)
+	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9': // string (encountered length)
+		return ParseString(bs)
+	default: // error
+		return Result{Rest: bs, Error: fmt.Errorf("expected start of term, got %x", bs[0])}
+	}
+}
+
 // delim tries to parse a single byte b from bs.
 //
 // It always returns rest even on error.  It doesn't return a Result, since

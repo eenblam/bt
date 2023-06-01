@@ -205,3 +205,83 @@ func TestParseString(t *testing.T) {
 		})
 	}
 }
+
+func TestParseList(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		Name      string
+		Input     []byte
+		Want      Value
+		WantRest  []byte
+		WantError bool
+	}{
+		{
+			Name:      "Parses integer list",
+			Input:     []byte(`li1234ei4321eeREST`),
+			Want:      BList([]Value{BInt(1234), BInt(4321)}),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:      "Parses mixed value list",
+			Input:     []byte(`li1234e5:12345eREST`),
+			Want:      BList([]Value{BInt(1234), BString([]byte(`12345`))}),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:  "Parses nested lists",
+			Input: []byte(`li1234eleli4321eeeREST`),
+			Want: BList([]Value{
+				BInt(1234),
+				BList([]Value{}),
+				BList([]Value{BInt(4321)}),
+			}),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:      "Parses empty list",
+			Input:     []byte(`leREST`),
+			Want:      BList([]Value{}),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:      "Fails non-list",
+			Input:     []byte(`i1234e`),
+			WantError: true,
+		},
+		{
+			Name:      "Fails without terminal e",
+			Input:     []byte(`li1234ei4321e`),
+			WantError: true,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			result := ParseList(c.Input)
+			if c.WantError {
+				if result.Error == nil {
+					t.Log(result.Value.Int())
+					t.Fatal("wanted error, got nil")
+				}
+				return
+			}
+			if result.Error != nil {
+				t.Log(string(c.Input))
+				t.Fatalf("unexpected error: %s", result.Error)
+			}
+			if !result.Value.Equal(c.Want) {
+				//t.Fatalf("result.Value: Got '%v', want '%v'", string(got), string(c.Want))
+				//TODO implement value.String()
+				t.Fatal("wrong result.Value")
+			}
+			if !bytes.Equal(result.Rest, c.WantRest) {
+				t.Fatalf("result:Rest: Got '%v', want '%v'", string(result.Rest), string(c.WantRest))
+			}
+		})
+	}
+}
