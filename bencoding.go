@@ -28,7 +28,8 @@ type Value interface {
 	Int() int
 	List() []Value
 	Map() map[string]Value
-	String() string
+	//String() string
+	String() []byte
 	Type() BencodingType
 }
 
@@ -36,8 +37,10 @@ type value struct {
 	i int
 	l []Value
 	m map[string]Value
-	s string
-	t BencodingType
+	//s string
+	// bs is a "byte string"
+	bs []byte
+	t  BencodingType
 }
 
 func BInt(n int) Value {
@@ -52,8 +55,9 @@ func BMap(m map[string]Value) Value {
 	return &value{m: m, t: Dictionary}
 }
 
-func BString(s string) Value {
-	return &value{s: s, t: String}
+// func BString(bs []byte) Value {
+func BString(bs []byte) Value {
+	return &value{bs: bs, t: String}
 }
 
 func (v *value) Int() int {
@@ -68,8 +72,9 @@ func (v *value) Map() map[string]Value {
 	return v.m
 }
 
-func (v *value) String() string {
-	return v.s
+// func (v *value) String() string {
+func (v *value) String() []byte {
+	return v.bs
 }
 
 func (v *value) Type() BencodingType {
@@ -152,5 +157,47 @@ func ParseInteger(bs []byte) Result {
 
 // ParseLength parses a nonnegative integer (can be zero)
 func ParseLength(bs []byte) Result {
-	return Result{}
+	if len(bs) == 0 {
+		return Result{Rest: bs, Error: ErrorEmpty()}
+	}
+	rest := bs
+	r := ParseInt(rest)
+	if r.Error != nil {
+		return r
+	}
+	// Check if negative
+	n := r.Value.Int()
+	if n < 0 {
+		return Result{Rest: bs, Error: fmt.Errorf("expected nonnegative integer, got %d", n)}
+	}
+	return r
+}
+
+func ParseString(bs []byte) Result {
+	// Parse length
+	lr := ParseLength(bs)
+	if lr.Error != nil {
+		return lr
+	}
+	length := lr.Value.Int()
+	// Parse colon
+	rest, err := delim(':', lr.Rest)
+	if err != nil {
+		return Result{Rest: bs, Error: err}
+	}
+	// Read length bytes
+	if len(rest) < length {
+		return Result{Rest: bs, Error: fmt.Errorf("expected to read %d bytes, found %d", length, len(rest))}
+	}
+	return Result{Value: BString(rest[:length]), Rest: rest[length:]}
+}
+
+func delim(b byte, bs []byte) ([]byte, error) {
+	if len(bs) == 0 {
+		return bs, ErrorEmpty()
+	}
+	if bs[0] != b {
+		return bs, fmt.Errorf("want %b, got %b", b, bs[0])
+	}
+	return bs[1:], nil
 }

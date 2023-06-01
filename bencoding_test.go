@@ -149,3 +149,59 @@ func TestParseInteger(t *testing.T) {
 		})
 	}
 }
+
+func TestParseString(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		Name      string
+		Input     []byte
+		Want      []byte
+		WantRest  []byte
+		WantError bool
+	}{
+		{
+			Name:      "Parses string",
+			Input:     []byte(`5:12345REST`),
+			Want:      []byte(`12345`),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:      "Parses empty string",
+			Input:     []byte(`0:REST`),
+			Want:      []byte(``),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:      "Fails negative length string",
+			Input:     []byte(`-5:12345REST`),
+			WantError: true,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			result := ParseString(c.Input)
+			if c.WantError {
+				if result.Error == nil {
+					t.Log(result.Value.Int())
+					t.Fatal("wanted error, got nil")
+				}
+				return
+			}
+			if result.Error != nil {
+				t.Log(string(c.Input))
+				t.Fatalf("unexpected error: %s", result.Error)
+			}
+			got := result.Value.String()
+			if !bytes.Equal(got, c.Want) {
+				t.Fatalf("result.Value: Got '%v', want '%v'", string(got), string(c.Want))
+			}
+			if !bytes.Equal(result.Rest, c.WantRest) {
+				t.Fatalf("result:Rest: Got '%v', want '%v'", string(result.Rest), string(c.WantRest))
+			}
+		})
+	}
+}
