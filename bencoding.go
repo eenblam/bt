@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"regexp"
@@ -31,6 +32,7 @@ type Value interface {
 	//String() string
 	String() []byte
 	Type() BencodingType
+	Equal(v Value) bool
 }
 
 type value struct {
@@ -81,6 +83,35 @@ func (v *value) Type() BencodingType {
 	return v.t
 }
 
+func (v *value) Equal(u Value) bool {
+	if v.Type() != u.Type() {
+		return false
+	}
+	switch v.Type() {
+	case Integer:
+		return v.Int() == u.Int()
+	case String:
+		return bytes.Equal(v.String(), u.String())
+	case List:
+		a, b := v.List(), u.List()
+		if len(a) != len(b) {
+			return false
+		}
+		for i := 0; i < len(a); i++ {
+			x, y := a[i], b[i]
+			if !x.Equal(y) {
+				return false
+			}
+		}
+		return true
+	case Dictionary:
+		//TODO
+		return false
+	default:
+	}
+	panic(fmt.Sprintf("unexpected BencodingType %d", v.Type()))
+}
+
 type Result struct {
 	//Value Value
 	//Value interface{}
@@ -116,7 +147,7 @@ func ParseInt(bs []byte) Result {
 	}
 	matches := patInt.FindSubmatch(bs)
 	if matches == nil {
-		return Result{Rest: bs, Error: errors.New("no match found")}
+		return Result{Rest: bs, Error: errors.New("ParseInt: no match found")}
 	}
 	if len(matches) != 3 {
 		fmt.Println(matches)
@@ -187,12 +218,17 @@ func ParseString(bs []byte) Result {
 	return Result{Value: BString(rest[:length]), Rest: rest[length:]}
 }
 
+// delim tries to parse a single byte b from bs.
+//
+// It always returns rest even on error.  It doesn't return a Result, since
+// 1. the delimiter is assumed to be markup only
+// 2. the caller will want to return a different rest on error more than 50% of the time
 func delim(b byte, bs []byte) ([]byte, error) {
 	if len(bs) == 0 {
 		return bs, ErrorEmpty()
 	}
 	if bs[0] != b {
-		return bs, fmt.Errorf("want %b, got %b", b, bs[0])
+		return bs, fmt.Errorf("want %x, got %x", b, bs[0])
 	}
 	return bs[1:], nil
 }
