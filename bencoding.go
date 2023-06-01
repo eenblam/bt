@@ -22,9 +22,6 @@ const (
 	Dictionary
 )
 
-// type VList []Value
-// type VMap map[string]Value
-// type Value [string | int | VList | VMap]
 type Value interface {
 	Int() int
 	List() []Value
@@ -40,7 +37,7 @@ type value struct {
 	l []Value
 	m map[string]Value
 	//s string
-	// bs is a "byte string"
+	// bs is a "byte string", per the spec
 	bs []byte
 	t  BencodingType
 }
@@ -57,7 +54,7 @@ func BMap(m map[string]Value) Value {
 	return &value{m: m, t: Dictionary}
 }
 
-// func BString(bs []byte) Value {
+// []byte, not actual string, per spec
 func BString(bs []byte) Value {
 	return &value{bs: bs, t: String}
 }
@@ -105,8 +102,20 @@ func (v *value) Equal(u Value) bool {
 		}
 		return true
 	case Dictionary:
-		//TODO
-		return false
+		a, b := v.Map(), u.Map()
+		if len(a) != len(b) {
+			return false
+		}
+		for k, vv := range a {
+			uu, ok := b[k]
+			if !ok {
+				return false
+			}
+			if !vv.Equal(uu) {
+				return false
+			}
+		}
+		return true
 	default:
 	}
 	panic(fmt.Sprintf("unexpected BencodingType %d", v.Type()))
@@ -245,8 +254,35 @@ func ParseList(bs []byte) Result {
 }
 
 func ParseDict(bs []byte) Result {
-	//TODO
-	return Result{}
+	rest, err := delim('d', bs)
+	if err != nil {
+		return Result{Rest: bs, Error: err}
+	}
+	results := make(map[string]Value)
+	for len(rest) > 0 {
+		switch rest[0] {
+		case 'e': // End of dict
+			// Create BMap, trim e from rest, return.
+			return Result{Value: BMap(results), Rest: rest[1:]}
+		default:
+		}
+		// Parse a key string
+		keyResult := ParseString(rest)
+		if keyResult.Error != nil {
+			return Result{Rest: bs, Error: fmt.Errorf("failed to parse key: %s", keyResult.Error)}
+		}
+		//TODO should we instead use map[[]byte]Value? Is that hashable?
+		key := string(keyResult.Value.String())
+		// Parse a value
+		valueResult := Term(keyResult.Rest)
+		if valueResult.Error != nil {
+			return Result{Rest: bs, Error: fmt.Errorf("failed to parse value for key %s: %s", key, valueResult.Error)}
+		}
+		//TODO what if key already exists? What does spec say?
+		results[key] = valueResult.Value
+		rest = valueResult.Rest
+	}
+	return Result{Rest: bs, Error: errors.New("reached EOF without completing dictionary")}
 }
 
 func Term(bs []byte) Result {

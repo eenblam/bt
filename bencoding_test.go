@@ -285,3 +285,91 @@ func TestParseList(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDict(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		Name      string
+		Input     []byte
+		Want      Value
+		WantRest  []byte
+		WantError bool
+	}{
+		{
+			Name:  "Parses first example from spec (dict of string:string)",
+			Input: []byte(`d3:cow3:moo4:spam4:eggseREST`),
+			Want: BMap(map[string]Value{
+				"cow":  BString([]byte(`moo`)),
+				"spam": BString([]byte(`eggs`)),
+			}),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:  "Parses second example from spec (dict of string:list)",
+			Input: []byte(`d4:spaml1:a1:beeREST`),
+			Want: BMap(map[string]Value{
+				"spam": BList([]Value{
+					BString([]byte(`a`)),
+					BString([]byte(`b`)),
+				}),
+			}),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:  "Parses nested dicts",
+			Input: []byte(`d4:spamd3:foo3:bareeREST`),
+			Want: BMap(map[string]Value{
+				"spam": BMap(map[string]Value{
+					"foo": BString([]byte(`bar`)),
+				}),
+			}),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:      "Parses empty dict",
+			Input:     []byte(`deREST`),
+			Want:      BMap(map[string]Value{}),
+			WantRest:  []byte(`REST`),
+			WantError: false,
+		},
+		{
+			Name:      "Fails non-dict",
+			Input:     []byte(`i1234e`),
+			WantError: true,
+		},
+		{
+			Name:      "Fails without terminal e",
+			Input:     []byte(`d4:spaml1:a1:be`),
+			WantError: true,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			result := ParseDict(c.Input)
+			if c.WantError {
+				if result.Error == nil {
+					t.Log(result.Value.Int())
+					t.Fatal("wanted error, got nil")
+				}
+				return
+			}
+			if result.Error != nil {
+				t.Log(string(c.Input))
+				t.Fatalf("unexpected error: %s", result.Error)
+			}
+			if !result.Value.Equal(c.Want) {
+				//t.Fatalf("result.Value: Got '%v', want '%v'", string(got), string(c.Want))
+				//TODO implement value.String()
+				t.Fatal("wrong result.Value")
+			}
+			if !bytes.Equal(result.Rest, c.WantRest) {
+				t.Fatalf("result:Rest: Got '%v', want '%v'", string(result.Rest), string(c.WantRest))
+			}
+		})
+	}
+}
