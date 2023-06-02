@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"reflect"
 	"testing"
 )
 
@@ -64,7 +65,7 @@ func TestParseInt(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Unexpected error: %s", err)
 			}
-			got := value.Int()
+			got := value.(int)
 			if got != c.Want {
 				t.Fatalf("Got %v, want %v", got, c.Want)
 			}
@@ -124,7 +125,6 @@ func TestParseInteger(t *testing.T) {
 		c := c
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
-			//result := parseInt(c.Input)
 			value, rest, err := ParseInteger(c.Input)
 			if c.WantError {
 				if err == nil {
@@ -133,10 +133,9 @@ func TestParseInteger(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Log(string(c.Input))
 				t.Fatalf("unexpected error: %s", err)
 			}
-			got := value.Int()
+			got := value.(int)
 			if got != c.Want {
 				t.Fatalf("value: Got %v, want %v", got, c.Want)
 			}
@@ -159,14 +158,14 @@ func TestParseString(t *testing.T) {
 		{
 			Name:      "Parses string",
 			Input:     []byte(`5:12345REST`),
-			Want:      `12345`,
+			Want:      "12345",
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
 		{
 			Name:      "Parses empty string",
 			Input:     []byte(`0:REST`),
-			Want:      ``,
+			Want:      "",
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
@@ -190,7 +189,7 @@ func TestParseString(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err)
 			}
-			got := value.String()
+			got := value.(string)
 			if got != c.Want {
 				t.Fatalf("value: Got '%v', want '%v'", string(got), string(c.Want))
 			}
@@ -206,39 +205,35 @@ func TestParseList(t *testing.T) {
 	cases := []struct {
 		Name      string
 		Input     []byte
-		Want      Value
+		Want      []any
 		WantRest  []byte
 		WantError bool
 	}{
 		{
 			Name:      "Parses integer list",
 			Input:     []byte(`li1234ei4321eeREST`),
-			Want:      BList([]Value{BInt(1234), BInt(4321)}),
+			Want:      []any{1234, 4321},
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
 		{
 			Name:      "Parses mixed value list",
 			Input:     []byte(`li1234e5:12345eREST`),
-			Want:      BList([]Value{BInt(1234), BString(`12345`)}),
+			Want:      []any{1234, "12345"},
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
 		{
-			Name:  "Parses nested lists",
-			Input: []byte(`li1234eleli4321eeeREST`),
-			Want: BList([]Value{
-				BInt(1234),
-				BList([]Value{}),
-				BList([]Value{BInt(4321)}),
-			}),
+			Name:      "Parses nested lists",
+			Input:     []byte(`li1234eleli4321eeeREST`),
+			Want:      []any{1234, []any{}, []any{4321}},
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
 		{
 			Name:      "Parses empty list",
 			Input:     []byte(`leREST`),
-			Want:      BList([]Value{}),
+			Want:      []any{},
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
@@ -267,7 +262,7 @@ func TestParseList(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err)
 			}
-			if !value.Equal(c.Want) {
+			if !reflect.DeepEqual(value, c.Want) {
 				//TODO implement value.String()
 				t.Fatal("wrong result.Value")
 			}
@@ -283,47 +278,40 @@ func TestParseDict(t *testing.T) {
 	cases := []struct {
 		Name      string
 		Input     []byte
-		Want      Value
+		Want      map[string]any
 		WantRest  []byte
 		WantError bool
 	}{
 		{
 			Name:  "Parses first example from spec (dict of string:string)",
 			Input: []byte(`d3:cow3:moo4:spam4:eggseREST`),
-			Want: BMap(map[string]Value{
-				"cow":  BString(`moo`),
-				"spam": BString(`eggs`),
-			}),
+			Want: map[string]any{
+				"cow":  "moo",
+				"spam": "eggs",
+			},
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
 		{
 			Name:  "Parses second example from spec (dict of string:list)",
 			Input: []byte(`d4:spaml1:a1:beeREST`),
-			Want: BMap(map[string]Value{
-				"spam": BList([]Value{
-					BString(`a`),
-					BString(`b`),
-				}),
-			}),
+			Want: map[string]any{
+				"spam": []any{"a", "b"},
+			},
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
 		{
-			Name:  "Parses nested dicts",
-			Input: []byte(`d4:spamd3:foo3:bareeREST`),
-			Want: BMap(map[string]Value{
-				"spam": BMap(map[string]Value{
-					"foo": BString(`bar`),
-				}),
-			}),
+			Name:      "Parses nested dicts",
+			Input:     []byte(`d4:spamd3:foo3:bareeREST`),
+			Want:      map[string]any{"spam": map[string]any{"foo": "bar"}},
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
 		{
 			Name:      "Parses empty dict",
 			Input:     []byte(`deREST`),
-			Want:      BMap(map[string]Value{}),
+			Want:      map[string]any{},
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
@@ -352,7 +340,7 @@ func TestParseDict(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err)
 			}
-			if !value.Equal(c.Want) {
+			if !reflect.DeepEqual(value, c.Want) {
 				//TODO implement value.String()
 				t.Fatal("wrong result.Value")
 			}

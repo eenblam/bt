@@ -12,131 +12,12 @@ func main() {
 
 var ErrorEmpty = func() error { return errors.New("received empty input") }
 
-type BencodingType int
-
-const (
-	Integer BencodingType = iota
-	List
-	String
-	Dictionary
-)
-
-func (b BencodingType) String() string {
-	switch b {
-	case Integer:
-		return "Integer"
-	case List:
-		return "List"
-	case String:
-		return "String"
-	case Dictionary:
-		return "Dictionary"
-	default:
-		return fmt.Sprintf("UNKNOWN_BENCODING_TYPE %d", b)
-	}
-}
-
-type Value interface {
-	Int() int
-	List() []Value
-	Map() map[string]Value
-	String() string
-	Type() BencodingType
-	Equal(v Value) bool
-}
-
-type value struct {
-	//TODO need to support arbitrary integer size
-	i int
-	l []Value
-	m map[string]Value
-	s string
-	t BencodingType
-}
-
-func BInt(n int) Value {
-	return &value{i: n, t: Integer}
-}
-
-func BList(l []Value) Value {
-	return &value{l: l, t: List}
-}
-
-func BMap(m map[string]Value) Value {
-	return &value{m: m, t: Dictionary}
-}
-
-func BString(s string) Value {
-	return &value{s: s, t: String}
-}
-
-func (v *value) Int() int {
-	return v.i
-}
-
-func (v *value) List() []Value {
-	return v.l
-}
-
-func (v *value) Map() map[string]Value {
-	return v.m
-}
-
-func (v *value) String() string {
-	return v.s
-}
-
-func (v *value) Type() BencodingType {
-	return v.t
-}
-
-func (v *value) Equal(u Value) bool {
-	if v.Type() != u.Type() {
-		return false
-	}
-	switch v.Type() {
-	case Integer:
-		return v.Int() == u.Int()
-	case String:
-		return v.String() == u.String()
-	case List:
-		a, b := v.List(), u.List()
-		if len(a) != len(b) {
-			return false
-		}
-		for i := 0; i < len(a); i++ {
-			x, y := a[i], b[i]
-			if !x.Equal(y) {
-				return false
-			}
-		}
-		return true
-	case Dictionary:
-		a, b := v.Map(), u.Map()
-		if len(a) != len(b) {
-			return false
-		}
-		for k, vv := range a {
-			uu, ok := b[k]
-			if !ok {
-				return false
-			}
-			if !vv.Equal(uu) {
-				return false
-			}
-		}
-		return true
-	default:
-	}
-	panic(fmt.Sprintf("unexpected BencodingType %d", v.Type()))
-}
-
 var patInt = regexp.MustCompile(`^(?:(0)[^0-9]|(-?[1-9]\d*))`)
 
 // ParseInt parses a *literal* integer value. It does NOT parse a Bencoded integer with i<int>e prefixing.
 //
 // "", -0, 00, 01, etc all produce errors.
-func ParseInt(bs []byte) (Value, []byte, error) {
+func ParseInt(bs []byte) (any, []byte, error) {
 	if len(bs) == 0 {
 		return nil, bs, ErrorEmpty()
 	}
@@ -148,18 +29,18 @@ func ParseInt(bs []byte) (Value, []byte, error) {
 		return nil, bs, fmt.Errorf("expected exactly 3 matches, got %d", len(matches))
 	}
 	if len(matches[1]) != 0 {
-		return BInt(0), bs[1:], nil
+		return 0, bs[1:], nil
 	}
 	data := matches[2]
 	n, err := strconv.Atoi(string(data))
 	if err != nil {
 		return nil, bs, err
 	}
-	return BInt(n), bs[len(data):], nil
+	return n, bs[len(data):], nil
 }
 
 // Parse iINTe
-func ParseInteger(bs []byte) (Value, []byte, error) {
+func ParseInteger(bs []byte) (any, []byte, error) {
 	rest, err := delim('i', bs)
 	if err != nil {
 		return nil, bs, err
@@ -176,7 +57,7 @@ func ParseInteger(bs []byte) (Value, []byte, error) {
 }
 
 // ParseLength parses a nonnegative integer (can be zero)
-func ParseLength(bs []byte) (Value, []byte, error) {
+func ParseLength(bs []byte) (any, []byte, error) {
 	if len(bs) == 0 {
 		return nil, bs, ErrorEmpty()
 	}
@@ -186,20 +67,20 @@ func ParseLength(bs []byte) (Value, []byte, error) {
 		return nil, bs, err
 	}
 	// Check if negative
-	n := i.Int()
+	n := i.(int)
 	if n < 0 {
 		return nil, bs, fmt.Errorf("expected nonnegative integer, got %d", n)
 	}
 	return i, rest, nil
 }
 
-func ParseString(bs []byte) (Value, []byte, error) {
+func ParseString(bs []byte) (any, []byte, error) {
 	// Parse length
 	l, rest, err := ParseLength(bs)
 	if err != nil {
 		return nil, bs, err
 	}
-	length := l.Int()
+	length := l.(int)
 	// Parse colon
 	rest, err = delim(':', rest)
 	if err != nil {
@@ -209,24 +90,24 @@ func ParseString(bs []byte) (Value, []byte, error) {
 	if len(rest) < length {
 		return nil, bs, fmt.Errorf("expected to read %d bytes, found %d", length, len(rest))
 	}
-	return BString(string(rest[:length])), rest[length:], nil
+	return string(rest[:length]), rest[length:], nil
 }
 
-func ParseList(bs []byte) (Value, []byte, error) {
+func ParseList(bs []byte) (any, []byte, error) {
 	// Parse l
 	rest, err := delim('l', bs)
 	if err != nil {
 		return nil, bs, err
 	}
 	// Parse e (end) or value
-	results := []Value{}
+	results := []any{}
 	for len(rest) > 0 {
 		if rest[0] == 'e' {
 			// Create BList, trim e from rest, return.
-			return BList(results), rest[1:], nil
+			return results, rest[1:], nil
 		}
 		// Parse a term
-		var next Value // Prevent := below to avoid shadowing rest
+		var next any // Prevent := below to avoid shadowing rest
 		next, rest, err = Parse(rest)
 		if err != nil {
 			return nil, bs, err
@@ -236,26 +117,29 @@ func ParseList(bs []byte) (Value, []byte, error) {
 	return nil, bs, errors.New("received incomplete list")
 }
 
-func ParseDict(bs []byte) (Value, []byte, error) {
+func ParseDict(bs []byte) (any, []byte, error) {
 	rest, err := delim('d', bs)
 	if err != nil {
 		return nil, bs, err
 	}
-	results := make(map[string]Value)
+	results := make(map[string]any)
 	for len(rest) > 0 {
 		if rest[0] == 'e' { // End of dict
 			// Create BMap, trim e from rest, return.
-			return BMap(results), rest[1:], nil
+			return results, rest[1:], nil
 		}
 		// Parse a key string
-		var keyString Value // Don't use := in order to avoid shadowing rest below
+		var keyString any // Don't use := in order to avoid shadowing rest below
 		keyString, rest, err = ParseString(rest)
 		if err != nil {
 			return nil, bs, fmt.Errorf("failed to parse key: %s", err)
 		}
-		key := string(keyString.String())
+		key, ok := keyString.(string)
+		if !ok {
+			return nil, bs, fmt.Errorf("expected string key, got %T", keyString)
+		}
 		// Parse a value
-		var value Value // Don't use := in order to avoid shadowing rest below
+		var value any // Don't use := in order to avoid shadowing rest below
 		value, rest, err = Parse(rest)
 		if err != nil {
 			return nil, bs, fmt.Errorf("failed to parse value for key %s: %s", key, err)
@@ -266,7 +150,7 @@ func ParseDict(bs []byte) (Value, []byte, error) {
 	return nil, bs, errors.New("reached EOF without completing dictionary")
 }
 
-func Parse(bs []byte) (Value, []byte, error) {
+func Parse(bs []byte) (any, []byte, error) {
 	if len(bs) == 0 {
 		return nil, bs, ErrorEmpty()
 	}
