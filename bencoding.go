@@ -22,6 +22,21 @@ const (
 	Dictionary
 )
 
+func (b BencodingType) String() string {
+	switch b {
+	case Integer:
+		return "Integer"
+	case List:
+		return "List"
+	case String:
+		return "String"
+	case Dictionary:
+		return "Dictionary"
+	default:
+		return fmt.Sprintf("UNKNOWN_BENCODING_TYPE %d", b)
+	}
+}
+
 type Value interface {
 	Int() int
 	List() []Value
@@ -33,6 +48,7 @@ type Value interface {
 }
 
 type value struct {
+	//TODO need to support arbitrary integer size
 	i int
 	l []Value
 	m map[string]Value
@@ -122,27 +138,10 @@ func (v *value) Equal(u Value) bool {
 }
 
 type Result struct {
-	//Value Value
-	//Value interface{}
 	Value Value
 	Rest  []byte
-	// Error *Error ???
 	Error error
 }
-
-/*
-type Parser func(input []byte) Result
-
-func Success(payload interface{}, remaining []byte) Result {
-	return Result{Value: payload, Rest: remaining}
-}
-
-func Fail(err error, input []byte) Result {
-	return Result{Error: err, Rest: input}
-}
-
-var patLength = regexp.MustCompile(`^(\d+):`)
-*/
 
 var patInt = regexp.MustCompile(`^(?:(0)[^0-9]|(-?[1-9]\d*))`)
 
