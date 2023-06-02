@@ -234,7 +234,7 @@ func ParseList(bs []byte) (Value, []byte, error) {
 		default:
 			// Parse a term
 			var next Value // Prevent := below to avoid shadowing rest
-			next, rest, err = Term(rest)
+			next, rest, err = Parse(rest)
 			if err != nil {
 				return nil, bs, err
 			}
@@ -267,7 +267,7 @@ func ParseDict(bs []byte) (Value, []byte, error) {
 		key := string(keyString.String())
 		// Parse a value
 		var value Value // Don't use := in order to avoid shadowing rest below
-		value, rest, err = Term(rest)
+		value, rest, err = Parse(rest)
 		if err != nil {
 			return nil, bs, fmt.Errorf("failed to parse value for key %s: %s", key, err)
 		}
@@ -277,7 +277,7 @@ func ParseDict(bs []byte) (Value, []byte, error) {
 	return nil, bs, errors.New("reached EOF without completing dictionary")
 }
 
-func Term(bs []byte) (Value, []byte, error) {
+func Parse(bs []byte) (Value, []byte, error) {
 	if len(bs) == 0 {
 		return nil, bs, ErrorEmpty()
 	}
