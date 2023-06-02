@@ -227,19 +227,17 @@ func ParseList(bs []byte) (Value, []byte, error) {
 	// Parse e (end) or value
 	results := []Value{}
 	for len(rest) > 0 {
-		switch rest[0] {
-		case 'e':
+		if rest[0] == 'e' {
 			// Create BList, trim e from rest, return.
 			return BList(results), rest[1:], nil
-		default:
-			// Parse a term
-			var next Value // Prevent := below to avoid shadowing rest
-			next, rest, err = Parse(rest)
-			if err != nil {
-				return nil, bs, err
-			}
-			results = append(results, next)
 		}
+		// Parse a term
+		var next Value // Prevent := below to avoid shadowing rest
+		next, rest, err = Parse(rest)
+		if err != nil {
+			return nil, bs, err
+		}
+		results = append(results, next)
 	}
 	return nil, bs, errors.New("received incomplete list")
 }
@@ -251,11 +249,9 @@ func ParseDict(bs []byte) (Value, []byte, error) {
 	}
 	results := make(map[string]Value)
 	for len(rest) > 0 {
-		switch rest[0] {
-		case 'e': // End of dict
+		if rest[0] == 'e' { // End of dict
 			// Create BMap, trim e from rest, return.
 			return BMap(results), rest[1:], nil
-		default:
 		}
 		// Parse a key string
 		var keyString Value // Don't use := in order to avoid shadowing rest below
@@ -263,7 +259,6 @@ func ParseDict(bs []byte) (Value, []byte, error) {
 		if err != nil {
 			return nil, bs, fmt.Errorf("failed to parse key: %s", err)
 		}
-		//TODO should we instead use map[[]byte]Value? Is that hashable?
 		key := string(keyString.String())
 		// Parse a value
 		var value Value // Don't use := in order to avoid shadowing rest below
@@ -288,9 +283,10 @@ func Parse(bs []byte) (Value, []byte, error) {
 		return ParseList(bs)
 	case 'd': // dict
 		return ParseDict(bs)
-	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9': // string (encountered length)
-		return ParseString(bs)
-	default: // error
+	default: // string or error
+		if '0' <= bs[0] && bs[0] <= '9' {
+			return ParseString(bs)
+		}
 		return nil, bs, fmt.Errorf("expected start of term, got %x", bs[0])
 	}
 }
