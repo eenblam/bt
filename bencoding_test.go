@@ -54,24 +54,22 @@ func TestParseInt(t *testing.T) {
 		c := c
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
-			//result := parseInt(c.Input)
-			result := ParseInt(c.Input)
+			value, rest, err := ParseInt(c.Input)
 			if c.WantError {
-				if result.Error == nil {
-					t.Log(result.Value.Int())
+				if err == nil {
 					t.Fatal("Wanted error, got nil")
 				}
 				return
 			}
-			if result.Error != nil {
-				t.Fatalf("Unexpected error: %s", result.Error)
+			if err != nil {
+				t.Fatalf("Unexpected error: %s", err)
 			}
-			got := result.Value.Int()
+			got := value.Int()
 			if got != c.Want {
 				t.Fatalf("Got %v, want %v", got, c.Want)
 			}
-			if !bytes.Equal(result.Rest, c.WantRest) {
-				t.Fatalf("Got %v, want %v", result.Rest, c.WantRest)
+			if !bytes.Equal(rest, c.WantRest) {
+				t.Fatalf("Got %v, want %v", rest, c.WantRest)
 			}
 		})
 	}
@@ -127,24 +125,23 @@ func TestParseInteger(t *testing.T) {
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
 			//result := parseInt(c.Input)
-			result := ParseInteger(c.Input)
+			value, rest, err := ParseInteger(c.Input)
 			if c.WantError {
-				if result.Error == nil {
-					t.Log(result.Value.Int())
+				if err == nil {
 					t.Fatal("wanted error, got nil")
 				}
 				return
 			}
-			if result.Error != nil {
+			if err != nil {
 				t.Log(string(c.Input))
-				t.Fatalf("unexpected error: %s", result.Error)
+				t.Fatalf("unexpected error: %s", err)
 			}
-			got := result.Value.Int()
+			got := value.Int()
 			if got != c.Want {
-				t.Fatalf("result.Value: Got %v, want %v", got, c.Want)
+				t.Fatalf("value: Got %v, want %v", got, c.Want)
 			}
-			if !bytes.Equal(result.Rest, c.WantRest) {
-				t.Fatalf("result:Rest: Got %v, want %v", string(result.Rest), string(c.WantRest))
+			if !bytes.Equal(rest, c.WantRest) {
+				t.Fatalf("rest: Got %v, want %v", string(rest), string(c.WantRest))
 			}
 		})
 	}
@@ -183,24 +180,22 @@ func TestParseString(t *testing.T) {
 		c := c
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
-			result := ParseString(c.Input)
+			value, rest, err := ParseString(c.Input)
 			if c.WantError {
-				if result.Error == nil {
-					t.Log(result.Value.Int())
+				if err == nil {
 					t.Fatal("wanted error, got nil")
 				}
 				return
 			}
-			if result.Error != nil {
-				t.Log(string(c.Input))
-				t.Fatalf("unexpected error: %s", result.Error)
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err)
 			}
-			got := result.Value.String()
+			got := value.String()
 			if !bytes.Equal(got, c.Want) {
-				t.Fatalf("result.Value: Got '%v', want '%v'", string(got), string(c.Want))
+				t.Fatalf("value: Got '%v', want '%v'", string(got), string(c.Want))
 			}
-			if !bytes.Equal(result.Rest, c.WantRest) {
-				t.Fatalf("result:Rest: Got '%v', want '%v'", string(result.Rest), string(c.WantRest))
+			if !bytes.Equal(rest, c.WantRest) {
+				t.Fatalf("rest: Got '%v', want '%v'", string(rest), string(c.WantRest))
 			}
 		})
 	}
@@ -262,25 +257,22 @@ func TestParseList(t *testing.T) {
 		c := c
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
-			result := ParseList(c.Input)
+			value, rest, err := ParseList(c.Input)
 			if c.WantError {
-				if result.Error == nil {
-					t.Log(result.Value.Int())
+				if err == nil {
 					t.Fatal("wanted error, got nil")
 				}
 				return
 			}
-			if result.Error != nil {
-				t.Log(string(c.Input))
-				t.Fatalf("unexpected error: %s", result.Error)
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err)
 			}
-			if !result.Value.Equal(c.Want) {
-				//t.Fatalf("result.Value: Got '%v', want '%v'", string(got), string(c.Want))
+			if !value.Equal(c.Want) {
 				//TODO implement value.String()
 				t.Fatal("wrong result.Value")
 			}
-			if !bytes.Equal(result.Rest, c.WantRest) {
-				t.Fatalf("result:Rest: Got '%v', want '%v'", string(result.Rest), string(c.WantRest))
+			if !bytes.Equal(rest, c.WantRest) {
+				t.Fatalf("rest: Got '%v', want '%v'", string(rest), string(c.WantRest))
 			}
 		})
 	}
@@ -350,25 +342,22 @@ func TestParseDict(t *testing.T) {
 		c := c
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
-			result := ParseDict(c.Input)
+			value, rest, err := ParseDict(c.Input)
 			if c.WantError {
-				if result.Error == nil {
-					t.Log(result.Value.Int())
+				if err == nil {
 					t.Fatal("wanted error, got nil")
 				}
 				return
 			}
-			if result.Error != nil {
-				t.Log(string(c.Input))
-				t.Fatalf("unexpected error: %s", result.Error)
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err)
 			}
-			if !result.Value.Equal(c.Want) {
-				//t.Fatalf("result.Value: Got '%v', want '%v'", string(got), string(c.Want))
+			if !value.Equal(c.Want) {
 				//TODO implement value.String()
 				t.Fatal("wrong result.Value")
 			}
-			if !bytes.Equal(result.Rest, c.WantRest) {
-				t.Fatalf("result:Rest: Got '%v', want '%v'", string(result.Rest), string(c.WantRest))
+			if !bytes.Equal(rest, c.WantRest) {
+				t.Fatalf("rest: Got '%v', want '%v'", string(rest), string(c.WantRest))
 			}
 		})
 	}

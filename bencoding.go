@@ -137,100 +137,92 @@ func (v *value) Equal(u Value) bool {
 	panic(fmt.Sprintf("unexpected BencodingType %d", v.Type()))
 }
 
-type Result struct {
-	Value Value
-	Rest  []byte
-	Error error
-}
-
 var patInt = regexp.MustCompile(`^(?:(0)[^0-9]|(-?[1-9]\d*))`)
 
-// ParseInt parses an integer value to a Result.
-// It does NOT parse a Bencoded integer with i<int>e prefixing.
+// ParseInt parses a *literal* integer value. It does NOT parse a Bencoded integer with i<int>e prefixing.
 //
 // "", -0, 00, 01, etc all produce errors.
-func ParseInt(bs []byte) Result {
+func ParseInt(bs []byte) (Value, []byte, error) {
 	if len(bs) == 0 {
-		return Result{Rest: bs, Error: ErrorEmpty()}
+		return nil, bs, ErrorEmpty()
 	}
 	matches := patInt.FindSubmatch(bs)
 	if matches == nil {
-		return Result{Rest: bs, Error: errors.New("ParseInt: no match found")}
+		return nil, bs, errors.New("ParseInt: no match found")
 	}
 	if len(matches) != 3 {
-		fmt.Println(matches)
-		return Result{Rest: bs, Error: fmt.Errorf("expected exactly 3 matches, got %d", len(matches))}
+		return nil, bs, fmt.Errorf("expected exactly 3 matches, got %d", len(matches))
 	}
 	if len(matches[1]) != 0 {
-		return Result{Value: BInt(0), Rest: bs[1:]}
+		return BInt(0), bs[1:], nil
 	}
 	data := matches[2]
 	n, err := strconv.Atoi(string(data))
 	if err != nil {
-		return Result{Rest: bs, Error: err}
+		return nil, bs, err
 	}
-	return Result{Value: BInt(n), Rest: bs[len(data):]}
+	return BInt(n), bs[len(data):], nil
 }
 
 // Parse iINTe
-func ParseInteger(bs []byte) Result {
+func ParseInteger(bs []byte) (Value, []byte, error) {
 	rest, err := delim('i', bs)
 	if err != nil {
-		return Result{Rest: bs, Error: err}
+		return nil, bs, err
 	}
-	r := ParseInt(rest)
-	if r.Error != nil {
-		return Result{Rest: bs, Error: r.Error}
-	}
-	rest, err = delim('e', r.Rest)
+	i, rest, err := ParseInt(rest)
 	if err != nil {
-		return Result{Rest: bs, Error: err}
+		return nil, bs, err
 	}
-	return Result{Value: r.Value, Rest: rest}
+	rest, err = delim('e', rest)
+	if err != nil {
+		return nil, bs, err
+	}
+	return i, rest, nil
 }
 
 // ParseLength parses a nonnegative integer (can be zero)
-func ParseLength(bs []byte) Result {
+func ParseLength(bs []byte) (Value, []byte, error) {
 	if len(bs) == 0 {
-		return Result{Rest: bs, Error: ErrorEmpty()}
+		return nil, bs, ErrorEmpty()
 	}
 	rest := bs
-	r := ParseInt(rest)
-	if r.Error != nil {
-		return r
+	i, rest, err := ParseInt(rest)
+	if err != nil {
+		return nil, bs, err
 	}
 	// Check if negative
-	n := r.Value.Int()
+	n := i.Int()
 	if n < 0 {
-		return Result{Rest: bs, Error: fmt.Errorf("expected nonnegative integer, got %d", n)}
+		return nil, bs, fmt.Errorf("expected nonnegative integer, got %d", n)
 	}
-	return r
+	return i, rest, nil
 }
 
-func ParseString(bs []byte) Result {
+func ParseString(bs []byte) (Value, []byte, error) {
 	// Parse length
-	lr := ParseLength(bs)
-	if lr.Error != nil {
-		return lr
-	}
-	length := lr.Value.Int()
-	// Parse colon
-	rest, err := delim(':', lr.Rest)
+	l, rest, err := ParseLength(bs)
 	if err != nil {
-		return Result{Rest: bs, Error: err}
+		return nil, bs, err
+	}
+	length := l.Int()
+	// Parse colon
+	rest, err = delim(':', rest)
+	if err != nil {
+		return nil, bs, err
 	}
 	// Read length bytes
 	if len(rest) < length {
-		return Result{Rest: bs, Error: fmt.Errorf("expected to read %d bytes, found %d", length, len(rest))}
+		return nil, bs, fmt.Errorf("expected to read %d bytes, found %d", length, len(rest))
 	}
-	return Result{Value: BString(rest[:length]), Rest: rest[length:]}
+	return BString(rest[:length]), rest[length:], nil
 }
 
-func ParseList(bs []byte) Result {
+func ParseList(bs []byte) (Value, []byte, error) {
 	// Parse l
 	rest, err := delim('l', bs)
 	if err != nil {
-		return Result{Rest: bs, Error: err}
+		return nil, bs, err
 	}
 	// Parse e (end) or value
 	results := []Value{}
@@ -238,55 +230,56 @@ func ParseList(bs []byte) Result {
 		switch rest[0] {
 		case 'e':
 			// Create BList, trim e from rest, return.
-			return Result{Value: BList(results), Rest: rest[1:]}
+			return BList(results), rest[1:], nil
 		default:
 			// Parse a term
-			next := Term(rest)
-			if next.Error != nil {
-				return Result{Rest: bs, Error: next.Error}
+			var next Value // Prevent := below to avoid shadowing rest
+			next, rest, err = Term(rest)
+			if err != nil {
+				return nil, bs, err
 			}
-			results = append(results, next.Value)
-			rest = next.Rest
+			results = append(results, next)
 		}
 	}
-	return Result{Rest: bs, Error: errors.New("received incomplete list")}
+	return nil, bs, errors.New("received incomplete list")
 }
 
-func ParseDict(bs []byte) Result {
+func ParseDict(bs []byte) (Value, []byte, error) {
 	rest, err := delim('d', bs)
 	if err != nil {
-		return Result{Rest: bs, Error: err}
+		return nil, bs, err
 	}
 	results := make(map[string]Value)
 	for len(rest) > 0 {
 		switch rest[0] {
 		case 'e': // End of dict
 			// Create BMap, trim e from rest, return.
-			return Result{Value: BMap(results), Rest: rest[1:]}
+			return BMap(results), rest[1:], nil
 		default:
 		}
 		// Parse a key string
-		keyResult := ParseString(rest)
-		if keyResult.Error != nil {
-			return Result{Rest: bs, Error: fmt.Errorf("failed to parse key: %s", keyResult.Error)}
+		var keyString Value // Don't use := in order to avoid shadowing rest below
+		keyString, rest, err = ParseString(rest)
+		if err != nil {
+			return nil, bs, fmt.Errorf("failed to parse key: %s", err)
 		}
 		//TODO should we instead use map[[]byte]Value? Is that hashable?
-		key := string(keyResult.Value.String())
+		key := string(keyString.String())
 		// Parse a value
-		valueResult := Term(keyResult.Rest)
-		if valueResult.Error != nil {
-			return Result{Rest: bs, Error: fmt.Errorf("failed to parse value for key %s: %s", key, valueResult.Error)}
+		var value Value // Don't use := in order to avoid shadowing rest below
+		value, rest, err = Term(rest)
+		if err != nil {
+			return nil, bs, fmt.Errorf("failed to parse value for key %s: %s", key, err)
 		}
 		//TODO what if key already exists? What does spec say?
-		results[key] = valueResult.Value
-		rest = valueResult.Rest
+		results[key] = value
 	}
-	return Result{Rest: bs, Error: errors.New("reached EOF without completing dictionary")}
+	return nil, bs, errors.New("reached EOF without completing dictionary")
 }
 
-func Term(bs []byte) Result {
+func Term(bs []byte) (Value, []byte, error) {
 	if len(bs) == 0 {
-		return Result{Rest: bs, Error: ErrorEmpty()}
+		return nil, bs, ErrorEmpty()
 	}
 	switch bs[0] {
 	case 'i': // integer
@@ -298,13 +291,13 @@ func Term(bs []byte) Result {
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9': // string (encountered length)
 		return ParseString(bs)
 	default: // error
-		return Result{Rest: bs, Error: fmt.Errorf("expected start of term, got %x", bs[0])}
+		return nil, bs, fmt.Errorf("expected start of term, got %x", bs[0])
 	}
 }
 
 // delim tries to parse a single byte b from bs.
 //
-// It always returns rest even on error.  It doesn't return a Result, since
+// It always returns rest even on error.  It doesn't return the parsed value, since
 // 1. the delimiter is assumed to be markup only
 // 2. the caller will want to return a different rest on error more than 50% of the time
 func delim(b byte, bs []byte) ([]byte, error) {
