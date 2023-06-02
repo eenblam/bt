@@ -1,13 +1,21 @@
 # bt
 
-## References
+## References and progress
 
-I'd like to eventually implement the following specs and extensions:
+Here are the specs I'm interested in exploring, along with their current implementation statuses:
 
 * [BEP 3: The BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)
-    * [ ] bencoding
-    * [ ] metainfo/.torrent implementation, read/write
+    * [x] bencoding
+        * [x] parse Integer
+        * [x] parse String
+        * [x] parse List
+        * [x] parse Dictionary
+    * [ ] metainfo/.torrent implementation
+        * [x] Unmarshal to Go struct
+        * [ ] Marshal from Go struct
     * [ ] Tracker requests, response parsing
+        * [ ] Unmarshal to Go struct
+        * [ ] Marshal from Go struct
     * [ ] Peer protocol
 * [BEP 4: Assigned Numbers](https://www.bittorrent.org/beps/bep_0004.html)
     * We'll want these as enums
