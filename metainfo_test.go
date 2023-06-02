@@ -1,43 +1,50 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 )
 
-func TestGetAnnounce(t *testing.T) {
-	t.Parallel()
+type FooBar struct {
+	Foo string
+	Bar []int
+	Baz map[string]string
+}
+
+var inputFooBar = []byte(`d3:Foo3:oof3:Barli1234ei-4321ei0ee3:Bazd3:cow3:moo4:spam4:eggsee`)
+var expectedFooBar = FooBar{
+	Foo: "oof",
+	Bar: []int{1234, -4321, 0},
+	Baz: map[string]string{"cow": "moo", "spam": "eggs"},
+}
+
+func TestFromBencode(t *testing.T) {
 	cases := []struct {
 		Name      string
-		Input     Value
-		Want      string
+		Input     []byte
+		Want      FooBar
 		WantError bool
 	}{
 		{
-			Name: "Happy path",
-			Input: BMap(map[string]Value{
-				"announce": BString(`an announcement`),
-			}),
-			Want:      "an announcement",
+			Name:      "Test happy path",
+			Input:     inputFooBar,
+			Want:      expectedFooBar,
 			WantError: false,
 		},
 	}
 	for _, c := range cases {
-		c := c
-		t.Run(c.Name, func(t *testing.T) {
-			t.Parallel()
-			got, err := GetAnnounce(c.Input)
-			if c.WantError {
-				if err == nil {
-					t.Fatal("wanted error, got nil")
-				}
-				return
+		got, err := FromBencode[FooBar](c.Input)
+		if c.WantError {
+			if err == nil {
+				t.Fatal("wanted error, got nil")
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %s", err)
-			}
-			if got != c.Want {
-				t.Fatalf("want '%s', got '%s'", c.Want, got)
-			}
-		})
+			return
+		}
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		if !reflect.DeepEqual(got, c.Want) {
+			t.Fatalf("want '%#v', got '%#v'", c.Want, got)
+		}
 	}
 }

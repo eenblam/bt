@@ -1,14 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 )
-
-func main() {
-}
 
 var ErrorEmpty = func() error { return errors.New("received empty input") }
 
@@ -182,4 +180,19 @@ func delim(b byte, bs []byte) ([]byte, error) {
 		return bs, fmt.Errorf("want %x, got %x", b, bs[0])
 	}
 	return bs[1:], nil
+}
+
+// Utility for unmarshaling to an arbitrary type by hacking to JSON.
+// ...this may break for arbitrary bytes?
+func FromBencode[T any](bs []byte) (t T, err error) {
+	v, _, err := Parse(bs)
+	if err != nil {
+		return t, err
+	}
+	js, err := json.Marshal(v)
+	if err != nil {
+		return t, err
+	}
+	err = json.Unmarshal(js, &t)
+	return t, err
 }
