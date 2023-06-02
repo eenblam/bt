@@ -14,7 +14,7 @@ var patInt = regexp.MustCompile(`^(?:(0)[^0-9]|(-?[1-9]\d*))`)
 
 // ParseInt parses a *literal* integer value. It does NOT parse a Bencoded integer with i<int>e prefixing.
 //
-// "", -0, 00, 01, etc all produce errors.
+// "", -0, 00, 01, etc all produce errors, per specification.
 func ParseInt(bs []byte) (any, []byte, error) {
 	if len(bs) == 0 {
 		return nil, bs, ErrorEmpty()
@@ -101,7 +101,7 @@ func ParseList(bs []byte) (any, []byte, error) {
 	results := []any{}
 	for len(rest) > 0 {
 		if rest[0] == 'e' {
-			// Create BList, trim e from rest, return.
+			// Done! Trim e from rest, return.
 			return results, rest[1:], nil
 		}
 		// Parse a term
@@ -115,6 +115,7 @@ func ParseList(bs []byte) (any, []byte, error) {
 	return nil, bs, errors.New("received incomplete list")
 }
 
+// TODO in theory, this should throw an error if keys are not in sorted order...
 func ParseDict(bs []byte) (any, []byte, error) {
 	rest, err := delim('d', bs)
 	if err != nil {
@@ -123,7 +124,7 @@ func ParseDict(bs []byte) (any, []byte, error) {
 	results := make(map[string]any)
 	for len(rest) > 0 {
 		if rest[0] == 'e' { // End of dict
-			// Create BMap, trim e from rest, return.
+			// Done! Trim e from rest, return.
 			return results, rest[1:], nil
 		}
 		// Parse a key string
@@ -153,11 +154,11 @@ func Parse(bs []byte) (any, []byte, error) {
 		return nil, bs, ErrorEmpty()
 	}
 	switch bs[0] {
-	case 'i': // integer
+	case 'i':
 		return ParseInteger(bs)
-	case 'l': // list
+	case 'l':
 		return ParseList(bs)
-	case 'd': // dict
+	case 'd':
 		return ParseDict(bs)
 	default: // string or error
 		if '0' <= bs[0] && bs[0] <= '9' {
@@ -184,6 +185,8 @@ func delim(b byte, bs []byte) ([]byte, error) {
 
 // Utility for unmarshaling to an arbitrary type by hacking to JSON.
 // ...this may break for arbitrary bytes?
+//
+// Anyway, the idea is that you can do FromBencode[MetaInfo], FromBencode[TrackerResponse], etc
 func FromBencode[T any](bs []byte) (t T, err error) {
 	v, _, err := Parse(bs)
 	if err != nil {
