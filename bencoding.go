@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"regexp"
@@ -41,8 +40,7 @@ type Value interface {
 	Int() int
 	List() []Value
 	Map() map[string]Value
-	//String() string
-	String() []byte
+	String() string
 	Type() BencodingType
 	Equal(v Value) bool
 }
@@ -52,10 +50,8 @@ type value struct {
 	i int
 	l []Value
 	m map[string]Value
-	//s string
-	// bs is a "byte string", per the spec
-	bs []byte
-	t  BencodingType
+	s string
+	t BencodingType
 }
 
 func BInt(n int) Value {
@@ -70,9 +66,8 @@ func BMap(m map[string]Value) Value {
 	return &value{m: m, t: Dictionary}
 }
 
-// []byte, not actual string, per spec
-func BString(bs []byte) Value {
-	return &value{bs: bs, t: String}
+func BString(s string) Value {
+	return &value{s: s, t: String}
 }
 
 func (v *value) Int() int {
@@ -87,9 +82,8 @@ func (v *value) Map() map[string]Value {
 	return v.m
 }
 
-// func (v *value) String() string {
-func (v *value) String() []byte {
-	return v.bs
+func (v *value) String() string {
+	return v.s
 }
 
 func (v *value) Type() BencodingType {
@@ -104,7 +98,7 @@ func (v *value) Equal(u Value) bool {
 	case Integer:
 		return v.Int() == u.Int()
 	case String:
-		return bytes.Equal(v.String(), u.String())
+		return v.String() == u.String()
 	case List:
 		a, b := v.List(), u.List()
 		if len(a) != len(b) {
@@ -215,7 +209,7 @@ func ParseString(bs []byte) (Value, []byte, error) {
 	if len(rest) < length {
 		return nil, bs, fmt.Errorf("expected to read %d bytes, found %d", length, len(rest))
 	}
-	return BString(rest[:length]), rest[length:], nil
+	return BString(string(rest[:length])), rest[length:], nil
 }
 
 func ParseList(bs []byte) (Value, []byte, error) {

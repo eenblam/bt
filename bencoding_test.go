@@ -152,21 +152,21 @@ func TestParseString(t *testing.T) {
 	cases := []struct {
 		Name      string
 		Input     []byte
-		Want      []byte
+		Want      string
 		WantRest  []byte
 		WantError bool
 	}{
 		{
 			Name:      "Parses string",
 			Input:     []byte(`5:12345REST`),
-			Want:      []byte(`12345`),
+			Want:      `12345`,
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
 		{
 			Name:      "Parses empty string",
 			Input:     []byte(`0:REST`),
-			Want:      []byte(``),
+			Want:      ``,
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
@@ -191,7 +191,7 @@ func TestParseString(t *testing.T) {
 				t.Fatalf("unexpected error: %s", err)
 			}
 			got := value.String()
-			if !bytes.Equal(got, c.Want) {
+			if got != c.Want {
 				t.Fatalf("value: Got '%v', want '%v'", string(got), string(c.Want))
 			}
 			if !bytes.Equal(rest, c.WantRest) {
@@ -220,7 +220,7 @@ func TestParseList(t *testing.T) {
 		{
 			Name:      "Parses mixed value list",
 			Input:     []byte(`li1234e5:12345eREST`),
-			Want:      BList([]Value{BInt(1234), BString([]byte(`12345`))}),
+			Want:      BList([]Value{BInt(1234), BString(`12345`)}),
 			WantRest:  []byte(`REST`),
 			WantError: false,
 		},
@@ -291,8 +291,8 @@ func TestParseDict(t *testing.T) {
 			Name:  "Parses first example from spec (dict of string:string)",
 			Input: []byte(`d3:cow3:moo4:spam4:eggseREST`),
 			Want: BMap(map[string]Value{
-				"cow":  BString([]byte(`moo`)),
-				"spam": BString([]byte(`eggs`)),
+				"cow":  BString(`moo`),
+				"spam": BString(`eggs`),
 			}),
 			WantRest:  []byte(`REST`),
 			WantError: false,
@@ -302,8 +302,8 @@ func TestParseDict(t *testing.T) {
 			Input: []byte(`d4:spaml1:a1:beeREST`),
 			Want: BMap(map[string]Value{
 				"spam": BList([]Value{
-					BString([]byte(`a`)),
-					BString([]byte(`b`)),
+					BString(`a`),
+					BString(`b`),
 				}),
 			}),
 			WantRest:  []byte(`REST`),
@@ -314,7 +314,7 @@ func TestParseDict(t *testing.T) {
 			Input: []byte(`d4:spamd3:foo3:bareeREST`),
 			Want: BMap(map[string]Value{
 				"spam": BMap(map[string]Value{
-					"foo": BString([]byte(`bar`)),
+					"foo": BString(`bar`),
 				}),
 			}),
 			WantRest:  []byte(`REST`),

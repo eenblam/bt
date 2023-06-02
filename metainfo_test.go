@@ -15,7 +15,7 @@ func TestGetAnnounce(t *testing.T) {
 		{
 			Name: "Happy path",
 			Input: BMap(map[string]Value{
-				"announce": BString([]byte(`an announcement`)),
+				"announce": BString(`an announcement`),
 			}),
 			Want:      "an announcement",
 			WantError: false,
