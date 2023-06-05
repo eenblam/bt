@@ -1,6 +1,11 @@
 package main
 
-import "errors"
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"net"
+)
 
 /*
 Tracker responses are bencoded dictionaries.
@@ -52,6 +57,67 @@ func ParseTrackerResponse(bs []byte) (*TrackerResponse, error) {
 			return nil, errors.New("TrackerResponse: Peers cannot be nil when Reason is nil")
 		}
 	}
-	//TODO parse peers into addresses
+	//TODO parse peers into net.IP addresses
 	return &tr, nil
+}
+
+type CompactTrackerResponse struct {
+	Reason   *string `json:"failure reason,omitempty"`
+	Interval *int    `json:"interval,omitempty"`
+	Peers    string  `json:"peers,omitempty"`
+}
+
+func ParseCompactTrackerResponse(bs []byte) (*TrackerResponse, error) {
+	// Parse a CompactTrackerResponse
+	tr, err := FromBencode[CompactTrackerResponse](bs)
+	if err != nil {
+		return nil, err
+	}
+	if tr.Reason != nil {
+		// Don't care about unpacking Peers if failure
+		return &TrackerResponse{Reason: tr.Reason}, nil
+	}
+	// Interval and Peers must both be non-nil if Reason is nil
+	if tr.Reason == nil {
+		if tr.Interval == nil {
+			return nil, errors.New("TrackerResponse: Interval cannot be nil when Reason is nil")
+		}
+		if tr.Peers == "" {
+			return nil, errors.New("TrackerResponse: Peers cannot be missing when Reason is nil")
+		}
+	}
+
+	// Parse Peers string into a list
+	if len(tr.Peers)%6 != 0 {
+		return nil, fmt.Errorf("expected Peers string to be divisible by 6, got %d", len(tr.Peers))
+	}
+	// Parse
+	peers := []Peer{}
+	var (
+		p          Peer
+		ipBytes    = make([]byte, 4)
+		ipUint32   uint32
+		ip         string
+		portUint16 uint16
+		port       int
+	)
+	for i := 0; i < len(tr.Peers); i += 6 {
+		// Need to read as network byte order (big endian) and convert to little endian
+		ipUint32 = binary.BigEndian.Uint32([]byte(tr.Peers[i : i+4]))
+		binary.LittleEndian.PutUint32(ipBytes, ipUint32)
+		ip = net.IPv4(ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3]).String()
+
+		portUint16 = binary.BigEndian.Uint16([]byte(tr.Peers[i+4 : i+6]))
+		port = int(portUint16)
+		//TODO convert from bytes to address
+
+		p = Peer{
+			Peer: "", // Ignored in compact format
+			IP:   ip,
+			Port: port,
+		}
+		peers = append(peers, p)
+	}
+
+	return &TrackerResponse{Interval: tr.Interval, Peers: peers}, nil
 }
