@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestParseTrackerResponse(t *testing.T) {
+func TestParseClassicTrackerResponse(t *testing.T) {
 	testInput := []byte(`d8:intervali10e5:peersld4:peer8:testpeer2:ip7:1.2.3.44:porti3333eeee`)
 	ten := 10
 	testWant := &TrackerResponse{
@@ -28,7 +28,7 @@ func TestParseTrackerResponse(t *testing.T) {
 }
 
 func TestParseTrackerResponseFailure(t *testing.T) {
-	// No Interval
+	// No Interval. Neither sub-parser should pass.
 	testInput := []byte(`d5:peersld4:peer8:testpeer2:ip7:1.2.3.44:porti3333eeee`)
 	_, err := ParseTrackerResponse(testInput)
 	if err == nil {
@@ -60,7 +60,7 @@ func TestParseCompactTrackerResponse(t *testing.T) {
 			},
 		},
 	}
-	got, err := ParseCompactTrackerResponse(testInput)
+	got, err := ParseTrackerResponse(testInput)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}

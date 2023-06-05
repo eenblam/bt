@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -43,10 +44,12 @@ type Peer struct {
 	Port int    `json:"port"`
 }
 
-func ParseTrackerResponse(bs []byte) (*TrackerResponse, error) {
-	tr, err := FromBencode[TrackerResponse](bs)
+// Parses a TrackerResponse from the JSON representation of a bencoded dictionary.
+func ParseClassicTrackerResponse(jsonBytes []byte) (*TrackerResponse, error) {
+	var tr TrackerResponse
+	err := json.Unmarshal(jsonBytes, &tr)
 	if err != nil {
-		return nil, err
+		return &tr, err
 	}
 	// Interval and Peers must both be non-nil if Reason is nil
 	if tr.Reason == nil {
@@ -67,9 +70,10 @@ type CompactTrackerResponse struct {
 	Peers    string  `json:"peers,omitempty"`
 }
 
-func ParseCompactTrackerResponse(bs []byte) (*TrackerResponse, error) {
-	// Parse a CompactTrackerResponse
-	tr, err := FromBencode[CompactTrackerResponse](bs)
+// Parses a compact TrackerResponse from the JSON representation of a bencoded dictionary.
+func ParseCompactTrackerResponse(jsonBytes []byte) (*TrackerResponse, error) {
+	var tr CompactTrackerResponse
+	err := json.Unmarshal(jsonBytes, &tr)
 	if err != nil {
 		return nil, err
 	}
@@ -120,4 +124,35 @@ func ParseCompactTrackerResponse(bs []byte) (*TrackerResponse, error) {
 	}
 
 	return &TrackerResponse{Interval: tr.Interval, Peers: peers}, nil
+}
+
+type TrackerResponsePartial struct {
+	// Don't love defining these as pointer,
+	// but I'm not sure how best to check if they were provided otherwise.
+	Reason   *string `json:"failure reason,omitempty"`
+	Interval *int    `json:"interval,omitempty"`
+	Peers    *string `json:"peers,omitempty"`
+}
+
+// Parse either:
+// Parse TrackerResponsePartial
+// Can I check the first byte of a RawMessage? String -> Compact, List -> Classic
+
+func ParseTrackerResponse(bs []byte) (*TrackerResponse, error) {
+	v, _, err := Parse(bs)
+	if err != nil {
+		return nil, err
+	}
+	js, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try Classic
+	tr, err := ParseClassicTrackerResponse(js)
+	if err == nil {
+		return tr, nil
+	}
+	// Failed - try compact
+	return ParseCompactTrackerResponse(js)
 }
