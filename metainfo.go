@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 )
 
 // See https://www.bittorrent.org/beps/bep_0003.html
@@ -18,7 +21,8 @@ type Info struct {
 	Name        string `json:"name,omitempty"`
 	PieceLength int    `json:"piece length"`
 	// String whose length is a multiple of 20, subdivided into strings of length 20, each a SHA1 hash of the piece at the corresponding index.
-	Pieces string `json:"pieces"`
+	Pieces       [][]byte `json:"-"`
+	PiecesString string   `json:"pieces"`
 	// Length OR Files. Check if Files is nil?
 	Length *int       `json:"length,omitempty"`
 	Files  []FileInfo `json:"files,omitempty"`
@@ -60,5 +64,31 @@ func ParseMetaInfo(bs []byte) (*MetaInfo, error) {
 			}
 		}
 	}
+	// Parse PiecesString (a string of length n*20) to Pieces
+	pieces := []byte(m.Info.PiecesString)
+	if len(pieces)%20 != 0 {
+		return nil, fmt.Errorf("MetaInfo:Info:Pieces: length of string \"pieces\" must be a multiple of 20, got length=%d", len(pieces))
+	}
+	nPieces := len(pieces) / 20
+	m.Info.Pieces = make([][]byte, nPieces)
+	for i := 0; i < nPieces; i++ {
+		m.Info.Pieces[i] = pieces[i*20 : (i+1)*20]
+	}
 	return &m, nil
+}
+
+// Just here for debugging at the moment
+func (m *MetaInfo) String() string {
+	pieces := make([]string, len(m.Info.Pieces))
+	for i, p := range m.Info.Pieces {
+		pieces[i] = base64.StdEncoding.EncodeToString(p)
+	}
+	return strings.Join([]string{
+		fmt.Sprintf("Announce: %s", m.Announce),
+		fmt.Sprintf("Name: %s", m.Info.Name),
+		fmt.Sprintf("Piece length: %d", m.Info.PieceLength),
+		//fmt.Sprintf("Pieces:\n\t%s", strings.Join(pieces, "\n\t")),
+		fmt.Sprintf("Length: %d", *m.Info.Length),
+		//m.Info.Files
+	}, "\n")
 }
