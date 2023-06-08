@@ -37,7 +37,7 @@ type TrackerResponse struct {
 }
 
 type Peer struct {
-	Peer string `json:"peer"` // string???
+	Peer string `json:"peer id"` // string???
 	//TODO add a non-JSON address generated from these?
 	// i.e. ParseTrackerResponse should try to create it, and error if the address can't be created.
 	IP   string `json:"ip"`
