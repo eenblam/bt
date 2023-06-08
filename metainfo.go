@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/sha1"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,11 +19,12 @@ type MetaInfo struct {
 }
 
 type Info struct {
-	// The name key maps to a UTF-8 encoded string which is the suggested name to save the file (or directory) as. It is purely advisory.
+	// name: maps to a UTF-8 encoded string which is the suggested name to save the file (or directory) as. It is purely advisory.
 	// In the single file case, the name key is the name of a file, in the muliple file case, it's the name of a directory.
-	Name        string `json:"name,omitempty"`
-	PieceLength int    `json:"piece length"`
-	// String whose length is a multiple of 20, subdivided into strings of length 20, each a SHA1 hash of the piece at the corresponding index.
+	Name string `json:"name,omitempty"`
+	// piece length: the number of bytes in each piece the file is split into. (Last may be truncated.)
+	PieceLength int `json:"piece length"`
+	// pieces: string whose length is a multiple of 20, subdivided into strings of length 20, each a SHA1 hash of the piece at the corresponding index.
 	Pieces       [][]byte `json:"-"`
 	PiecesString string   `json:"pieces"`
 	// Length OR Files. Check if Files is nil?
@@ -85,16 +85,35 @@ func ParseMetaInfo(bs []byte) (*MetaInfo, error) {
 func (m *MetaInfo) String() string {
 	pieces := make([]string, len(m.Info.Pieces))
 	for i, p := range m.Info.Pieces {
-		pieces[i] = base64.StdEncoding.EncodeToString(p)
+		pieces[i] = fmt.Sprintf("%x", p)
 	}
+
+	length := ""
+	if m.Info.Length != nil {
+		length = fmt.Sprint(*m.Info.Length)
+	}
+	fmt.Println(length)
+
+	files := ""
+	if m.Info.Files != nil {
+		for _, f := range m.Info.Files {
+			files += fmt.Sprintf("\n\t(%d bytes) %s", f.Length, strings.Join(f.Path, "/"))
+		}
+	} else {
+		files = "none"
+	}
+
 	return strings.Join([]string{
-		fmt.Sprintf("Announce: %s", m.Announce),
-		fmt.Sprintf("Name: %s", m.Info.Name),
-		fmt.Sprintf("Piece length: %d", m.Info.PieceLength),
-		//fmt.Sprintf("Pieces:\n\t%s", strings.Join(pieces, "\n\t")),
-		fmt.Sprintf("Length: %d", *m.Info.Length),
-		//m.Info.Files
-	}, "\n")
+		fmt.Sprintf("MetaInfo.Announce: %s", m.Announce),
+		fmt.Sprintf("MetaInfo.InfoSha1Sum (hex): %x", m.InfoShaSum),
+		fmt.Sprintf("MetaInfo.Info.Name: %s", m.Info.Name),
+		fmt.Sprintf("MetaInfo.Info.Piece length: %d", m.Info.PieceLength),
+		fmt.Sprintf("MetaInfo.Info.Pieces (length): %d", len(m.Info.Pieces)),
+		//fmt.Sprintf("MetaInfo.Info.Pieces (hex):\n\t%s", strings.Join(pieces, "\n\t")),
+		"MetaInfo.Info.Pieces (hex): (omitted)",
+		fmt.Sprintf("MetaInfo.Info.Length: %s", length),
+		fmt.Sprintf("MetaInfo.Info.Files: %s", files),
+	}, "\n\t")
 }
 
 // parseMetaInfo handles the lower-level parsing of a metainfo file,
