@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha1"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +15,8 @@ import (
 type MetaInfo struct {
 	Announce string `json:"announce"`
 	Info     Info   `json:"info"`
+	// Could just do InfoSha1
+	InfoShaSum [sha1.Size]byte `json:"-"`
 }
 
 type Info struct {
@@ -45,7 +49,7 @@ func LoadMetaInfoFromFile(filename string) (*MetaInfo, error) {
 }
 
 func ParseMetaInfo(bs []byte) (*MetaInfo, error) {
-	m, err := FromBencode[MetaInfo](bs)
+	m, err := parseMetaInfo(bs)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +78,7 @@ func ParseMetaInfo(bs []byte) (*MetaInfo, error) {
 	for i := 0; i < nPieces; i++ {
 		m.Info.Pieces[i] = pieces[i*20 : (i+1)*20]
 	}
-	return &m, nil
+	return m, nil
 }
 
 // Just here for debugging at the moment
@@ -91,4 +95,102 @@ func (m *MetaInfo) String() string {
 		fmt.Sprintf("Length: %d", *m.Info.Length),
 		//m.Info.Files
 	}, "\n")
+}
+
+// parseMetaInfo handles the lower-level parsing of a metainfo file,
+// in which we need to be sure to extract the raw bencoded version of the info dict
+// in order to pass it to the tracker.
+func parseMetaInfo(bs []byte) (*MetaInfo, error) {
+	// "a" for announce should place its key first, before "info" key
+	if len(bs) == 0 {
+		return nil, ErrorEmpty()
+	}
+	// strip d from beginning
+	if bs[0] != 'd' {
+		return nil, fmt.Errorf("MetaInfo: expected metainfo to begin with 'd', got %b", bs[0])
+	}
+	bs = bs[1:]
+	// read 8:announce
+	got, rest, err := ParseString(bs)
+	if err != nil {
+		return nil, err
+	}
+	if got != "announce" {
+		return nil, fmt.Errorf("MetaInfo: expected \"announce\", got %s", got)
+	}
+	// read some string (value of announce)
+	announceAny, rest, err := ParseString(rest)
+	if err != nil {
+		return nil, err
+	}
+	announce, ok := announceAny.(string)
+	if !ok {
+		return nil, fmt.Errorf("MetaInfo: expected announce value to have type string, got %T", announceAny)
+	}
+
+	for _, k := range []string{"comment", "created by", "creation date"} {
+		got, rest, err = ParseString(rest)
+		if err != nil {
+			return nil, err
+		}
+		if got != k {
+			return nil, fmt.Errorf("MetaInfo: expected '%s', got '%s'", k, got)
+		}
+		_, rest, err = Parse(rest)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// read 4:info key (as string)
+	got, rest, err = ParseString(rest)
+	if err != nil {
+		return nil, err
+	}
+	if got != "info" {
+		return nil, fmt.Errorf("MetaInfo: expected \"info\", got %s", got)
+	}
+
+	// d8:announce6:value4:infodINFOee
+	// 8:announce6:value4:infodINFOee
+	// 6:value4:infodINFOee
+	// 4:infodINFOee
+	// dINFOee
+	// dINFOe <- Need to extract this to get SHA1
+	// Now left with dINFOee. Strip last e.
+	if len(rest) == 0 {
+		return nil, errors.New("MetaInfo: unexpected EOF")
+	}
+	if rest[len(rest)-1] != 'e' {
+		return nil, fmt.Errorf("MetaInfo: expected 'e' at end of metainfo, got %d", rest[len(rest)-1])
+	}
+	rest = rest[:len(rest)-1]
+	rawInfo := rest
+	// Parse the rest as dict, coerce into an &Info{} (value of info)
+	parsedInfo, rest, err := ParseDict(rest)
+	if err != nil {
+		return nil, err
+	}
+	// We should now be done
+	if len(rest) != 0 {
+		return nil, fmt.Errorf("expected EOF after parsing Info dict, but found %d bytes", len(rest))
+	}
+
+	// Extract an actual struct
+	js, err := json.Marshal(parsedInfo)
+	if err != nil {
+		return nil, err
+	}
+	var info Info
+	err = json.Unmarshal(js, &info)
+	if err != nil {
+		return nil, err
+	}
+
+	// store raw bytes into MetaInfo struct as well
+	return &MetaInfo{
+		Announce:   announce,
+		Info:       info,
+		InfoShaSum: sha1.Sum(rawInfo),
+	}, nil
 }
