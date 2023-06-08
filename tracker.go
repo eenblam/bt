@@ -126,18 +126,6 @@ func ParseCompactTrackerResponse(jsonBytes []byte) (*TrackerResponse, error) {
 	return &TrackerResponse{Interval: tr.Interval, Peers: peers}, nil
 }
 
-type TrackerResponsePartial struct {
-	// Don't love defining these as pointer,
-	// but I'm not sure how best to check if they were provided otherwise.
-	Reason   *string `json:"failure reason,omitempty"`
-	Interval *int    `json:"interval,omitempty"`
-	Peers    *string `json:"peers,omitempty"`
-}
-
-// Parse either:
-// Parse TrackerResponsePartial
-// Can I check the first byte of a RawMessage? String -> Compact, List -> Classic
-
 func ParseTrackerResponse(bs []byte) (*TrackerResponse, error) {
 	v, _, err := Parse(bs)
 	if err != nil {
