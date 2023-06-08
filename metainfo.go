@@ -1,4 +1,4 @@
-package main
+package bt
 
 import (
 	"crypto/sha1"
