@@ -3,7 +3,10 @@ package bt
 import (
 	"crypto/rand"
 	"fmt"
+	"log"
 	"net/url"
+	"os"
+	"path/filepath"
 )
 
 // Using Azureus-style peer id.
@@ -26,9 +29,11 @@ func GenPeerId() ([20]byte, error) {
 }
 
 type Downloader struct {
-	MetaInfo    *MetaInfo
-	PeerId      [20]byte
-	ListenPort  int
+	MetaInfo   *MetaInfo
+	PeerId     [20]byte
+	ListenPort int
+	// Where pieces will be downloaded to
+	PiecesDir   string
 	isMultifile bool
 	downloaded  int
 	uploaded    int
@@ -47,12 +52,19 @@ func NewDownloader(filename string) (*Downloader, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	piecesDir, err := SetupStorage(fmt.Sprintf("%x", m.InfoShaSum))
+	if err != nil {
+		return nil, err
+	}
+
 	//TODO get a port to listen on
 	port := 9999
 	return &Downloader{
 		MetaInfo:    m,
 		PeerId:      peerId,
 		ListenPort:  port,
+		PiecesDir:   piecesDir,
 		isMultifile: m.Info.Files != nil,
 	}, nil
 }
@@ -76,4 +88,28 @@ func (d *Downloader) MakeTrackerQuery() (string, error) {
 	v.Set("left", fmt.Sprint(d.left))
 	v.Set("event", "started")
 	return v.Encode(), nil
+}
+
+// If needed, creates directories required for download based on environment variable.
+// No error if directories already exist.
+func SetupStorage(downloadName string) (string, error) {
+	//TODO consider different env variable name and default name. Maybe use a flag instead?
+	workRoot := os.Getenv("BT_WORKROOT")
+	if workRoot == "" {
+		workRoot = "./bt-work/"
+	}
+	downloadDir := filepath.Join(workRoot, "download", downloadName)
+	log.Printf("Using download directory %s", downloadDir)
+	err := os.MkdirAll(downloadDir, os.ModePerm)
+	if err != nil && !os.IsExist(err) {
+		return "", err
+	} else if os.IsExist(err) {
+		log.Printf("Download directory already available: %s", downloadDir)
+	}
+	// Directory for building output file from pieces
+	err = os.MkdirAll(filepath.Join(workRoot, "build"), os.ModePerm)
+	if err != nil && !os.IsExist(err) {
+		return "", err
+	}
+	return downloadDir, nil
 }
