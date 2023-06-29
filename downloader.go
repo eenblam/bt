@@ -3,8 +3,10 @@ package bt
 import (
 	"crypto/rand"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -87,6 +89,23 @@ func (d *Downloader) MakeTrackerQuery() (string, error) {
 	v.Set("left", fmt.Sprint(d.left))
 	v.Set("event", "started")
 	return v.Encode(), nil
+}
+
+func (d *Downloader) QueryTracker() (*TrackerResponse, error) {
+	q, err := d.MakeTrackerQuery()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tracker query: %s", err)
+	}
+	u := fmt.Sprintf("%s?%s", d.MetaInfo.Announce, q)
+	r, err := http.Get(u)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tracker response: %s", err)
+	}
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read body of tracker response: %s", err)
+	}
+	return ParseTrackerResponse(data)
 }
 
 // If needed, creates directories required for download based on environment variable.
