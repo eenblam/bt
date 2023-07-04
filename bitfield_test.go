@@ -2,6 +2,7 @@ package bt
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 )
 
@@ -688,4 +689,389 @@ func TestNextTrue(t *testing.T) {
 			t.Fatalf("Expected nextTrue to still be 5 after second Swap, got %d", nf)
 		}
 	})
+}
+
+func TestBFieldSub(t *testing.T) {
+	// Mostly testing error conditions, not much need to test logical operators.
+	cases := []struct {
+		Name      string
+		A         []byte
+		B         []byte
+		ALength   int
+		BLength   int
+		Want      []byte
+		WantError bool
+	}{
+		{
+			Name:    "Identity: zero minus zero equals zero",
+			A:       []byte{0},
+			B:       []byte{0},
+			Want:    []byte{0},
+			ALength: 8,
+			BLength: 8,
+		},
+		{
+			Name:    "Invariant: a sub a equals zero",
+			A:       []byte{0b10101010, 0b10101010},
+			B:       []byte{0b10101010, 0b10101010},
+			Want:    []byte{0, 0},
+			ALength: 12,
+			BLength: 12,
+		},
+		{
+			Name:    "Invariant: a sub (^a) equals a",
+			A:       []byte{0b10101010, 0b10101010},
+			B:       []byte{0b01010101, 0b01010101},
+			Want:    []byte{0b10101010, 0b10101010},
+			ALength: 12,
+			BLength: 12,
+		},
+		{
+			Name:    "a sub b drops shared bits",
+			A:       []byte{0b10101111, 0b11111010},
+			B:       []byte{0b01010101, 0b01010101},
+			Want:    []byte{0b10101010, 0b10101010},
+			ALength: 12,
+			BLength: 12,
+		},
+		{
+			Name:      "Same byte length but different bit lengths returns error",
+			A:         []byte{0, 0, 0, 0},
+			B:         []byte{0, 0, 0, 0},
+			ALength:   32,
+			BLength:   31,
+			WantError: true,
+		},
+		{
+			// This catches both the case of two valid BFields with different lengths,
+			// as well as the case of a manually misconfigured BField.
+			// We want to ensure a runtime error instead of OOB access for the latter.
+			Name:      "Same bit length but different byte lengths returns error",
+			A:         []byte{0, 0, 0, 0},
+			B:         []byte{0, 0, 0, 0, 0},
+			ALength:   32,
+			BLength:   32,
+			WantError: true,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			// NewBitfield() would prevent certain errors that this method catches,
+			// so manually create these to test those error checks.
+			a := &BField{bs: c.A, length: c.ALength, nextFalse: -1, nextTrue: -1}
+			b := &BField{bs: c.B, length: c.BLength, nextFalse: -1, nextTrue: -1}
+			got, err := a.Sub(b)
+			switch {
+			case c.WantError && err == nil:
+				t.Fatal("Expected error, got none")
+			case c.WantError:
+				return
+			case err != nil:
+				t.Fatalf("Unexpected error: %s", err)
+			case !bytes.Equal(c.Want, got.bs):
+				t.Fatalf("Want %b, got %b", c.Want, got.bs)
+			default:
+			}
+		})
+	}
+	t.Run("Sub correctly initializes nextTrue and nextFalse", func(t *testing.T) {
+		t.Parallel()
+		a := &BField{bs: []byte{0b01011111, 0b10101010}, // bs values don't matter
+			length: 16, nextFalse: -1, nextTrue: -1}
+		b := &BField{bs: []byte{0b10101010, 0b10101010},
+			length: 16, nextFalse: -1, nextTrue: -1}
+		c, err := a.Sub(b)
+		if err != nil {
+			t.Fatalf("Unexpected error subtracting BFields: %s", err)
+		}
+		if c.nextFalse != -1 {
+			t.Fatalf("Expected nextFalse to be -1, got %d", c.nextFalse)
+		}
+		if c.nextFalse != -1 {
+			t.Fatalf("Expected nextTrue to be -1, got %d", c.nextFalse)
+		}
+	})
+
+}
+
+func TestBFieldSubInto(t *testing.T) {
+	// Mostly testing error conditions, not much need to test logical operators.
+	cases := []struct {
+		Name           string
+		A              []byte
+		B              []byte
+		ALength        int
+		BLength        int
+		IntoLength     int
+		IntoByteLength int
+		Want           []byte
+		WantError      bool
+	}{
+		{
+			Name:           "Identity: zero minus zero equals zero",
+			A:              []byte{0},
+			B:              []byte{0},
+			Want:           []byte{0},
+			ALength:        8,
+			BLength:        8,
+			IntoLength:     8,
+			IntoByteLength: 1,
+		},
+		{
+			Name:           "Invariant: a sub a equals zero",
+			A:              []byte{0b10101010, 0b10101010},
+			B:              []byte{0b10101010, 0b10101010},
+			Want:           []byte{0, 0},
+			ALength:        12,
+			BLength:        12,
+			IntoLength:     12,
+			IntoByteLength: 2,
+		},
+		{
+			Name:           "Invariant: a sub (^a) equals a",
+			A:              []byte{0b10101010, 0b10101010},
+			B:              []byte{0b01010101, 0b01010101},
+			Want:           []byte{0b10101010, 0b10101010},
+			ALength:        12,
+			BLength:        12,
+			IntoLength:     12,
+			IntoByteLength: 2,
+		},
+		{
+			Name:           "a sub b drops shared bits",
+			A:              []byte{0b10101111, 0b11111010},
+			B:              []byte{0b01010101, 0b01010101},
+			Want:           []byte{0b10101010, 0b10101010},
+			ALength:        12,
+			BLength:        12,
+			IntoLength:     12,
+			IntoByteLength: 2,
+		},
+		{
+			Name:           "Same byte length but mismatched \"a\" bit length returns error",
+			A:              []byte{0, 0, 0, 0},
+			B:              []byte{0, 0, 0, 0},
+			ALength:        32,
+			BLength:        31,
+			IntoLength:     32,
+			IntoByteLength: 4,
+			WantError:      true,
+		},
+		{
+			Name:           "Same byte length but mismatched \"into\" bit length returns error",
+			A:              []byte{0, 0, 0, 0},
+			B:              []byte{0, 0, 0, 0},
+			ALength:        32,
+			BLength:        32,
+			IntoLength:     31,
+			IntoByteLength: 4,
+			WantError:      true,
+		},
+		{
+			// This catches both the case of two valid BFields with different lengths,
+			// as well as the case of a manually misconfigured BField.
+			// We want to ensure a runtime error instead of OOB access for the latter.
+			Name:           "Same bit lengths but mismatched \"a\" byte length returns error",
+			A:              []byte{0, 0, 0, 0},
+			B:              []byte{0, 0, 0, 0, 0},
+			ALength:        32,
+			BLength:        32,
+			IntoLength:     32,
+			IntoByteLength: 4,
+			WantError:      true,
+		},
+		{
+			Name:           "Same bit lengths but mismatched \"into\" byte length returns error",
+			A:              []byte{0, 0, 0, 0},
+			B:              []byte{0, 0, 0, 0},
+			ALength:        32,
+			BLength:        32,
+			IntoLength:     32,
+			IntoByteLength: 5,
+			WantError:      true,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			// NewBitfield() would prevent certain errors that this method catches,
+			// so manually create these to test those error checks.
+			a := &BField{bs: c.A, length: c.ALength, nextFalse: -1, nextTrue: -1}
+			b := &BField{bs: c.B, length: c.BLength, nextFalse: -1, nextTrue: -1}
+			got := &BField{bs: make([]byte, c.IntoByteLength),
+				length: c.IntoLength, nextFalse: -1, nextTrue: -1}
+			err := a.SubInto(got, b)
+			switch {
+			case c.WantError && err == nil:
+				t.Fatal("Expected error, got none")
+			case c.WantError:
+				return
+			case err != nil:
+				t.Fatalf("Unexpected error: %s", err)
+			case !bytes.Equal(c.Want, got.bs):
+				t.Fatalf("Want %b, got %b", c.Want, got.bs)
+			default:
+			}
+		})
+	}
+}
+
+func TestBFieldSubUpdatesIterators(t *testing.T) {
+	// Covers both Sub and SubInto
+	cases := []struct {
+		Name          string
+		A             []byte
+		B             []byte
+		WantNextFalse int
+		WantNextTrue  int
+	}{
+		{
+			Name:          "nextFalse should be A's when A's is smaller",
+			A:             []byte{0b10101010, 0b10101010},
+			B:             []byte{0b11010101, 0b01010101},
+			WantNextFalse: 1,
+			WantNextTrue:  0,
+		},
+		{
+			Name:          "nextFalse should be B's when B's is smaller",
+			B:             []byte{0b10101010, 0b10101010},
+			A:             []byte{0b11010101, 0b01010101},
+			WantNextFalse: 1,
+			WantNextTrue:  0,
+		},
+		{
+			Name:          "nextTrue should be A's when A's is smaller",
+			A:             []byte{0b01010101, 0b01010101},
+			B:             []byte{0b00101010, 0b10101010},
+			WantNextFalse: 0,
+			WantNextTrue:  1,
+		},
+		{
+			Name:          "nextTrue should be B's when B's is smaller",
+			A:             []byte{0b00101010, 0b10101010},
+			B:             []byte{0b01010101, 0b01010101},
+			WantNextFalse: 0,
+			WantNextTrue:  1,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(fmt.Sprintf("Sub: %s", c.Name), func(t *testing.T) {
+			t.Parallel()
+			length := len(c.A) * 8
+			a := &BField{bs: c.A, length: length, nextFalse: -1, nextTrue: -1}
+			b := &BField{bs: c.B, length: length, nextFalse: -1, nextTrue: -1}
+			got := &BField{bs: make([]byte, len(c.A)),
+				length: length, nextFalse: -1, nextTrue: -1}
+			// Ignore these return values, we're testing the side effects. Errors tested elsewhere.
+			a.NextFalse()
+			a.NextTrue()
+			b.NextFalse()
+			b.NextTrue()
+			got, err := a.Sub(b)
+			switch {
+			case err != nil:
+				t.Fatalf("Unexpected error: %s", err)
+			case c.WantNextFalse != got.nextFalse:
+				t.Fatalf("Want nextFalse %b, got %b", c.WantNextFalse, got.nextFalse)
+			case c.WantNextTrue != got.nextTrue:
+				t.Fatalf("Want nextTrue %b, got %b", c.WantNextTrue, got.nextTrue)
+			default:
+			}
+		})
+		t.Run(fmt.Sprintf("SubInto: %s", c.Name), func(t *testing.T) {
+			t.Parallel()
+			length := len(c.A) * 8
+			a := &BField{bs: c.A, length: length, nextFalse: -1, nextTrue: -1}
+			b := &BField{bs: c.B, length: length, nextFalse: -1, nextTrue: -1}
+			got := &BField{bs: make([]byte, len(c.A)),
+				length: length, nextFalse: -1, nextTrue: -1}
+			// Ignore these return values, we're testing the side effects. Errors tested elsewhere.
+			a.NextFalse()
+			a.NextTrue()
+			b.NextFalse()
+			b.NextTrue()
+			err := a.SubInto(got, b)
+			switch {
+			case err != nil:
+				t.Fatalf("Unexpected error: %s", err)
+			case c.WantNextFalse != got.nextFalse:
+				t.Fatalf("Want nextFalse %b, got %b", c.WantNextFalse, got.nextFalse)
+			case c.WantNextTrue != got.nextTrue:
+				t.Fatalf("Want nextTrue %b, got %b", c.WantNextTrue, got.nextTrue)
+			default:
+			}
+		})
+	}
+}
+
+func TestBFieldEqual(t *testing.T) {
+	// Mostly testing error conditions, no need to test bytes.Equal
+	cases := []struct {
+		Name      string
+		A         []byte
+		B         []byte
+		ALength   int
+		BLength   int
+		Want      bool
+		WantError bool
+	}{
+		{
+			Name:    "Zero bitfields are equal",
+			A:       []byte{0},
+			B:       []byte{0},
+			ALength: 8,
+			BLength: 8,
+			Want:    true,
+		},
+		{
+			Name:    "Non-aligned bitfields are equal",
+			A:       []byte{0b00001010, 0b00010000},
+			B:       []byte{0b00001010, 0b00010000},
+			ALength: 12,
+			BLength: 12,
+			Want:    true,
+		},
+		{
+			Name:      "Same byte length but different bit lengths returns error",
+			A:         []byte{0, 0, 0, 0},
+			B:         []byte{0, 0, 0, 0},
+			ALength:   32,
+			BLength:   31,
+			WantError: true,
+		},
+		{
+			Name:      "Same bit length but different byte lengths returns error",
+			A:         []byte{0, 0, 0, 0},
+			B:         []byte{0, 0, 0, 0, 0}, // suppose manual misconfiguration of BField. Ensure error instead of OOB access.
+			ALength:   32,
+			BLength:   32,
+			WantError: true,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			// NewBitfield() would prevent certain errors that this method catches,
+			// so manually create these to test those error checks.
+			a := &BField{bs: c.A, length: c.ALength, nextFalse: -1, nextTrue: -1}
+			b := &BField{bs: c.B, length: c.BLength, nextFalse: -1, nextTrue: -1}
+			got, err := a.Equal(b)
+			switch {
+			case c.WantError && err == nil:
+				t.Fatal("Expected error, got none")
+			case c.WantError:
+				return
+			case err != nil:
+				t.Fatalf("Unexpected error: %s", err)
+			case c.Want != got:
+				t.Fatalf("Want %v, got %v", c.Want, got)
+			default:
+			}
+		})
+	}
 }

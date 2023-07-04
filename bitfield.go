@@ -1,6 +1,7 @@
 package bt
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 )
@@ -210,4 +211,87 @@ func (b *BField) NextTrue() (int, bool) {
 	// We should've caught this prior, but just in case (and to appease compiler)
 	b.nextTrue = b.length
 	return b.nextTrue, true
+}
+
+// Sub takes the difference of b and a: the bits in b that are not in a.
+// More precisely, (b & (^a)). Errors on length mismatches.
+//
+// Use this to find the pieces that a peer has that you don't:
+// wantPieces := peerPieces.Sub(downloaderPieces)
+func (b *BField) Sub(a *BField) (*BField, error) {
+	if b.length != a.length {
+		return nil, fmt.Errorf("bit lengths unequal - expected %d, got %d", b.length, a.length)
+	}
+	if len(b.bs) != len(a.bs) { // avoid OOB read on manually created BFields
+		return nil, fmt.Errorf("byte array lengths unequal - expected %d, got %d", len(b.bs), len(a.bs))
+	}
+	out := make([]byte, len(b.bs))
+	for i, x := range b.bs {
+		out[i] = x & (^a.bs[i])
+	}
+	// set each iterator state to minimum of the two inputs
+	var nextFalse, nextTrue int
+	if b.nextFalse <= a.nextFalse {
+		nextFalse = b.nextFalse
+	} else {
+		nextFalse = a.nextFalse
+	}
+	if b.nextTrue <= a.nextTrue {
+		nextTrue = b.nextTrue
+	} else {
+		nextTrue = a.nextTrue
+	}
+	return &BField{
+		bs:        out,
+		length:    b.length,
+		nextFalse: nextFalse,
+		nextTrue:  nextTrue,
+	}, nil
+}
+
+// SubInto takes the difference of b and a (the bits in b that are not in a)
+// and writes them to "into".
+// More precisely, into = (b & (^a)). Errors on length mismatches.
+//
+// Use this to find the pieces that a peer has that you don't:
+// peerPieces.Sub(piecesToRequest, downloaderPieces)
+func (b *BField) SubInto(into, a *BField) error {
+	if b.length != into.length {
+		return fmt.Errorf("\"into\" bit length doesn't match source - expected %d, got %d", b.length, into.length)
+	}
+	if b.length != a.length {
+		return fmt.Errorf("\"a\" bit length doesn't match source - expected %d, got %d", b.length, a.length)
+	}
+	if len(b.bs) != len(into.bs) { // avoid OOB read on manually created BFields
+		return fmt.Errorf("\"into\" byte array length doesn't match source - expected %d, got %d", len(b.bs), len(into.bs))
+	}
+	if len(b.bs) != len(a.bs) {
+		return fmt.Errorf("\"a\" byte array length doesn't match source - expected %d, got %d", len(b.bs), len(a.bs))
+	}
+	for i, x := range b.bs {
+		into.bs[i] = x & (^a.bs[i])
+	}
+	// set each iterator state to minimum of the two inputs
+	if b.nextFalse <= a.nextFalse {
+		into.nextFalse = b.nextFalse
+	} else {
+		into.nextFalse = a.nextFalse
+	}
+	if b.nextTrue <= a.nextTrue {
+		into.nextTrue = b.nextTrue
+	} else {
+		into.nextTrue = a.nextTrue
+	}
+	return nil
+}
+
+// Equal compares two BFields for equality, returning an error for unequal lengths.
+func (b *BField) Equal(a *BField) (bool, error) {
+	if b.length != a.length {
+		return false, fmt.Errorf("bit lengths unequal - expected %d, got %d", b.length, a.length)
+	}
+	if len(b.bs) != len(a.bs) { // avoid OOB read on manually created BFields
+		return false, fmt.Errorf("byte array lengths unequal - expected %d, got %d", len(b.bs), len(a.bs))
+	}
+	return bytes.Equal(b.bs, a.bs), nil
 }
