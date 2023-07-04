@@ -361,3 +361,331 @@ func TestNewEmptyBitfield(t *testing.T) {
 		})
 	}
 }
+
+func TestNextFalse(t *testing.T) {
+	cases := []struct {
+		Name        string
+		InputBytes  []byte
+		InputLength int
+		// What to initialize to. -1 to count from beginning.
+		SetNextFalse int
+		WantIndex    int
+		WantDone     bool
+		WantError    bool
+	}{
+		{
+			Name:         "Succeeds on zero byte array",
+			InputBytes:   []byte{0, 0, 0},
+			InputLength:  24,
+			WantIndex:    0,
+			WantDone:     false,
+			SetNextFalse: -1,
+		},
+		{
+			Name:         "Succeeds on non-initial byte",
+			InputBytes:   []byte{255, 0b10101111, 255},
+			InputLength:  24,
+			WantIndex:    9,
+			WantDone:     false,
+			SetNextFalse: -1,
+		},
+		{
+			Name:         "Done when done, single byte",
+			InputBytes:   []byte{255},
+			InputLength:  8,
+			WantIndex:    8,
+			WantDone:     true,
+			SetNextFalse: 8, // we've already counted this
+		},
+		{
+			Name:         "Done when done",
+			InputBytes:   []byte{255, 255},
+			InputLength:  16,
+			WantIndex:    16,
+			WantDone:     true,
+			SetNextFalse: 16, // we've already counted this
+		},
+		{
+			Name:         "Doesn't overread into spare bits",
+			InputBytes:   []byte{255, 0b11110000},
+			InputLength:  12,
+			WantIndex:    12,
+			WantDone:     true,
+			SetNextFalse: -1, // fine to start from the start
+		},
+		{
+			// This one is sadly implementation-specific but I think important for a specific bug
+			Name:         "Resuming from mid-byte doesn't lead to skipped bits in later byte",
+			InputBytes:   []byte{255, 0b01110000},
+			InputLength:  16,
+			WantIndex:    8,
+			WantDone:     false,
+			SetNextFalse: 5, // start at 5th bit of first byte, find bit in 2nd bit of second byte
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			bf, err := NewBitfield(c.InputBytes, c.InputLength)
+			bf.nextFalse = c.SetNextFalse
+			if err != nil {
+				t.Fatalf("Unexpected error initializing BField: %s", err)
+			}
+			gotNext, gotDone := bf.NextFalse()
+			switch {
+			case c.WantError && err == nil:
+				t.Fatal("Expected error, got none")
+			case c.WantError:
+				return
+			case err != nil:
+				t.Fatalf("Unexpected error: %s", err)
+			case c.WantIndex != gotNext:
+				t.Fatalf("Want index %d, got %d", c.WantIndex, gotNext)
+			case c.WantDone != gotDone:
+				t.Fatalf("Want done=%v, got done=%v", c.WantDone, gotDone)
+			default:
+			}
+		})
+	}
+
+	t.Run("Reset nextFalse correctly for Set", func(t *testing.T) {
+		t.Parallel()
+		bf, err := NewBitfield([]byte{255, 0b11110111}, 16)
+		if err != nil {
+			t.Fatalf("Unexpected error initializing BField: %s", err)
+		}
+		// Initial check; ensure nextFalse=12
+		nf, done := bf.NextFalse()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 12 {
+			t.Fatalf("Expected nextFalse to be 12, got %d", nf)
+		}
+		// Set an earlier 1 to a 0
+		if err = bf.Set(5, false); err != nil {
+			t.Fatalf("Unexpected error in first Set: %s", err)
+		}
+		nf, done = bf.NextFalse()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 5 {
+			t.Fatalf("Expected nextFalse to be 5 after first Set, got %d", nf)
+		}
+		// Set a *later* 1 to a 0
+		if err = bf.Set(6, false); err != nil {
+			t.Fatalf("Unexpected error in second Set: %s", err)
+		}
+		nf, done = bf.NextFalse()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 5 {
+			t.Fatalf("Expected nextFalse to still be 5 after second swap, got %d", nf)
+		}
+	})
+
+	t.Run("Reset nextFalse correctly for Swap", func(t *testing.T) {
+		t.Parallel()
+		bf, err := NewBitfield([]byte{255, 0b11110111}, 16)
+		if err != nil {
+			t.Fatalf("Unexpected error initializing BField: %s", err)
+		}
+		// Initial check; ensure nextFalse=12
+		nf, done := bf.NextFalse()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 12 {
+			t.Fatalf("Expected nextFalse to be 12, got %d", nf)
+		}
+		// Swap an earlier 1 to a 0
+		if err = bf.Swap(5); err != nil {
+			t.Fatalf("Unexpected error in first swap: %s", err)
+		}
+		nf, done = bf.NextFalse()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 5 {
+			t.Fatalf("Expected nextFalse to be 5 after first Swap, got %d", nf)
+		}
+		// Swap a *later* 1 to a 0
+		if err = bf.Swap(6); err != nil {
+			t.Fatalf("Unexpected error in second Swap: %s", err)
+		}
+		nf, done = bf.NextFalse()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 5 {
+			t.Fatalf("Expected nextFalse to still be 5 after second Swap, got %d", nf)
+		}
+	})
+}
+
+func TestNextTrue(t *testing.T) {
+	cases := []struct {
+		Name        string
+		InputBytes  []byte
+		InputLength int
+		// What to initialize to. -1 to count from beginning.
+		SetNextTrue int
+		WantIndex   int
+		WantDone    bool
+		WantError   bool
+	}{
+		{
+			Name:        "Succeeds on all-ones byte array",
+			InputBytes:  []byte{255, 255, 255},
+			InputLength: 24,
+			WantIndex:   0,
+			WantDone:    false,
+			SetNextTrue: -1,
+		},
+		{
+			Name:        "Succeeds on non-initial byte",
+			InputBytes:  []byte{0, 0b01010000, 0},
+			InputLength: 24,
+			WantIndex:   9,
+			WantDone:    false,
+			SetNextTrue: -1,
+		},
+		{
+			Name:        "Done when done, single byte",
+			InputBytes:  []byte{0},
+			InputLength: 8,
+			WantIndex:   8,
+			WantDone:    true,
+			SetNextTrue: 8, // we've already counted this
+		},
+		{
+			Name:        "Done when done",
+			InputBytes:  []byte{0, 0},
+			InputLength: 16,
+			WantIndex:   16,
+			WantDone:    true,
+			SetNextTrue: 16, // we've already counted this
+		},
+		{
+			Name:        "Doesn't overread into spare bits",
+			InputBytes:  []byte{0, 0b00000000},
+			InputLength: 12,
+			WantIndex:   12, // as opposed to reading past length to end
+			WantDone:    true,
+			SetNextTrue: -1, // fine to start from the start
+		},
+		{
+			// This one is sadly implementation-specific but I think important for a specific bug
+			Name:        "Resuming from mid-byte doesn't lead to skipped bits in later byte",
+			InputBytes:  []byte{0, 0b10001111},
+			InputLength: 16,
+			WantIndex:   8,
+			WantDone:    false,
+			SetNextTrue: 5, // start at 5th bit of first byte, find bit in 2nd bit of second byte
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			bf, err := NewBitfield(c.InputBytes, c.InputLength)
+			bf.nextTrue = c.SetNextTrue
+			if err != nil {
+				t.Fatalf("Unexpected error initializing BField: %s", err)
+			}
+			gotNext, gotDone := bf.NextTrue()
+			switch {
+			case c.WantError && err == nil:
+				t.Fatal("Expected error, got none")
+			case c.WantError:
+				return
+			case err != nil:
+				t.Fatalf("Unexpected error: %s", err)
+			case c.WantIndex != gotNext:
+				t.Fatalf("Want index %d, got %d", c.WantIndex, gotNext)
+			case c.WantDone != gotDone:
+				t.Fatalf("Want done=%v, got done=%v", c.WantDone, gotDone)
+			default:
+			}
+		})
+	}
+
+	t.Run("Reset nextTrue correctly for Set", func(t *testing.T) {
+		t.Parallel()
+		bf, err := NewBitfield([]byte{0, 0b00001000}, 16)
+		if err != nil {
+			t.Fatalf("Unexpected error initializing BField: %s", err)
+		}
+		// Initial check; ensure nextTrue=12
+		nf, done := bf.NextTrue()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 12 {
+			t.Fatalf("Expected nextTrue to be 12, got %d", nf)
+		}
+		// Set an earlier 1 to a 0
+		if err = bf.Set(5, true); err != nil {
+			t.Fatalf("Unexpected error in first Set: %s", err)
+		}
+		nf, done = bf.NextTrue()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 5 {
+			t.Fatalf("Expected nextTrue to be 5 after first Set, got %d", nf)
+		}
+		// Set a *later* 1 to a 0
+		if err = bf.Set(6, true); err != nil {
+			t.Fatalf("Unexpected error in second Set: %s", err)
+		}
+		nf, done = bf.NextTrue()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 5 {
+			t.Fatalf("Expected nextTrue to still be 5 after second swap, got %d", nf)
+		}
+	})
+
+	t.Run("Reset nextTrue correctly for Swap", func(t *testing.T) {
+		t.Parallel()
+		bf, err := NewBitfield([]byte{0, 0b00001000}, 16)
+		if err != nil {
+			t.Fatalf("Unexpected error initializing BField: %s", err)
+		}
+		// Initial check; ensure nextTrue=12
+		nf, done := bf.NextTrue()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 12 {
+			t.Fatalf("Expected nextTrue to be 12, got %d", nf)
+		}
+		// Swap an earlier 1 to a 0
+		if err = bf.Swap(5); err != nil {
+			t.Fatalf("Unexpected error in first swap: %s", err)
+		}
+		nf, done = bf.NextTrue()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 5 {
+			t.Fatalf("Expected nextTrue to be 5 after first Swap, got %d", nf)
+		}
+		// Swap a *later* 1 to a 0
+		if err = bf.Swap(6); err != nil {
+			t.Fatalf("Unexpected error in second Swap: %s", err)
+		}
+		nf, done = bf.NextTrue()
+		if done {
+			t.Fatal("Unexpected done=true")
+		}
+		if nf != 5 {
+			t.Fatalf("Expected nextTrue to still be 5 after second Swap, got %d", nf)
+		}
+	})
+}
