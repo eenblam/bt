@@ -131,7 +131,7 @@ func ParseDict(bs []byte) (any, []byte, error) {
 		var keyString any // Don't use := in order to avoid shadowing rest below
 		keyString, rest, err = ParseString(rest)
 		if err != nil {
-			return nil, bs, fmt.Errorf("failed to parse key: %s", err)
+			return nil, bs, fmt.Errorf("failed to parse key: %w", err)
 		}
 		key, ok := keyString.(string)
 		if !ok {
@@ -141,7 +141,7 @@ func ParseDict(bs []byte) (any, []byte, error) {
 		var value any // Don't use := in order to avoid shadowing rest below
 		value, rest, err = Parse(rest)
 		if err != nil {
-			return nil, bs, fmt.Errorf("failed to parse value for key %s: %s", key, err)
+			return nil, bs, fmt.Errorf("failed to parse value for key %s: %w", key, err)
 		}
 		//TODO what if key already exists? What does spec say?
 		results[key] = value

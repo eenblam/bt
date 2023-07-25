@@ -26,7 +26,7 @@ func GenPeerId() ([20]byte, error) {
 	rest := out[8:]
 	_, err := rand.Read(rest)
 	if err != nil { // only check err, since n = len(rest) iff err == nil
-		return out, fmt.Errorf("failed to read random bytes: %s", err)
+		return out, fmt.Errorf("failed to read random bytes: %w", err)
 	}
 	return out, nil
 }
@@ -94,16 +94,19 @@ func (d *Downloader) MakeTrackerQuery() (string, error) {
 func (d *Downloader) QueryTracker() (*TrackerResponse, error) {
 	q, err := d.MakeTrackerQuery()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tracker query: %s", err)
+		return nil, fmt.Errorf("failed to create tracker query: %w", err)
 	}
 	u := fmt.Sprintf("%s?%s", d.MetaInfo.Announce, q)
 	r, err := http.Get(u)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get tracker response: %s", err)
+		return nil, fmt.Errorf("GET %s: %w", u, err)
+	}
+	if r.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s: expected 200 OK, got %s", u, r.Status)
 	}
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read body of tracker response: %s", err)
+		return nil, fmt.Errorf("GET %s: reading body: %w", u, err)
 	}
 	return ParseTrackerResponse(data)
 }
@@ -153,7 +156,7 @@ func (d *Downloader) Listen() error {
 			return nil
 		}
 	}
-	return fmt.Errorf("couldn't listen on ports 6881-6889. Last error: %s", err)
+	return fmt.Errorf("couldn't listen on ports 6881-6889. Last error: %w", err)
 }
 
 // ListenPort attempts to listen specifically on a given port
@@ -164,7 +167,7 @@ func (d *Downloader) ListenPort(port int) error {
 		Zone: "", //TODO support IPv6
 	})
 	if err != nil {
-		return fmt.Errorf("couldn't listen on port %d: %s", port, err)
+		return fmt.Errorf("couldn't listen on port %d: %w", port, err)
 	}
 	log.Printf("listening on port %d", port)
 	d.listener = listener

@@ -49,7 +49,7 @@ func Expect(from io.Reader, buf, want []byte) error {
 	}
 	buf = buf[:len(want)]
 	if _, err := io.ReadFull(from, buf); err != nil {
-		return fmt.Errorf("Expect: couldn't read %x from reader: %s", want, err)
+		return fmt.Errorf("Expect: couldn't read %x from reader: %w", want, err)
 	}
 	if !bytes.Equal(buf, want) {
 		return fmt.Errorf("Expect: want %x, got %x", want, buf)
@@ -78,7 +78,7 @@ func ParseMessage(r io.Reader) (*Message, error) {
 	var length uint32
 	err := binary.Read(r, binary.BigEndian, &length)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't parse message length: %s", err)
+		return nil, fmt.Errorf("couldn't parse message length: %w", err)
 	}
 	fmt.Println(length)
 	// if 0000, it's keep-alive
@@ -88,7 +88,7 @@ func ParseMessage(r io.Reader) (*Message, error) {
 	buf := make([]byte, length)
 	// Parse message id/type (one byte)
 	if _, err = io.ReadFull(r, buf); err != nil {
-		return nil, fmt.Errorf("couldn't parse message id byte: %s", err)
+		return nil, fmt.Errorf("couldn't parse message id byte: %w", err)
 	}
 	mType := MType(buf[0])
 	if length == 1 {
