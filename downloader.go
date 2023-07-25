@@ -32,7 +32,7 @@ func GenPeerId() ([20]byte, error) {
 }
 
 type Downloader struct {
-	MetaInfo  *MetaInfo
+	MetaInfo  MetaInfo
 	PeerId    [20]byte
 	LocalPort int
 	// Where pieces will be downloaded to
@@ -63,7 +63,7 @@ func NewDownloader(filename string) (*Downloader, error) {
 	}
 
 	return &Downloader{
-		MetaInfo:    m,
+		MetaInfo:    *m,
 		PeerId:      peerId,
 		PiecesDir:   piecesDir,
 		isMultifile: m.Info.Files != nil,
